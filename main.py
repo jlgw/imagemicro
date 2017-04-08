@@ -36,11 +36,7 @@ def visual_histogram(img):
     del draw
     return histimg
 
-def button_click_exit_mainloop(event):
-    event.widget.quit() 
-
 root = Tkinter.Tk()
-root.bind("<Button>", button_click_exit_mainloop)
 root.geometry('+%d+%d' % (100,100))
 
 def update(instance, image1):
@@ -60,9 +56,18 @@ def greyscale():
 
 def openfile():
     global img
+    global orig
     filename = tkFileDialog.askopenfilename()
     img = PIL.Image.open(filename).convert("L")
+    orig = img.copy()
     print 'img = PIL.Image.open("' + filename + '").convert("L")'
+    print 'orig = img.copy()'
+    update(root,img)
+
+def load_original():
+    global img
+    global orig
+    img = orig
     update(root,img)
 
 def savefile():
@@ -259,20 +264,24 @@ def morph(count, top, morph_type):
     img2 = PIL.Image.new(mode="1", size = img.size)
     #convertion to "L" was necessary for some reason
     if morph_type=="erosion":
-        tmp = scipy.ndimage.binary_erosion(img.convert("L"), structure=np.ones((count, count)))
+        tmp = scipy.ndimage.binary_erosion(img.convert("L"), 
+                structure=np.ones((count, count)))
     elif morph_type=="dilation":
-        tmp = scipy.ndimage.binary_dilation(img.convert("L"), structure=np.ones((count, count)))
+        tmp = scipy.ndimage.binary_dilation(img.convert("L"), 
+                structure=np.ones((count, count)))
     elif morph_type=="opening":
-        tmp = scipy.ndimage.binary_opening(img.convert("L"), structure=np.ones((count, count)))
+        tmp = scipy.ndimage.binary_opening(img.convert("L"), 
+                structure=np.ones((count, count)))
     elif morph_type=="closing":
-        tmp = scipy.ndimage.binary_closing(img.convert("L"), structure=np.ones((count, count)))
+        tmp = scipy.ndimage.binary_closing(img.convert("L"), 
+                structure=np.ones((count, count)))
     elif morph_type=="fill_holes":
         tmp = scipy.ndimage.binary_fill_holes(img.convert("L"))
     if logger:
         print 'tmpimg = PIL.Image.new(mode="1", size = img.size)'
         print ('tmp = scipy.ndimage.binary_' +
         morph_type + '(img.convert("L"), structure=np.ones((' +
-        str(count) + ", " + str(count) + "))")
+                str(count) + ", " + str(count) + "))")
         print "tmpimg.putdata(255*tmp.flatten())"
         print 'img = tmpimg.convert("1")'
 
@@ -350,6 +359,7 @@ savemenu.add_command(label="Binary Slot 3", command=lambda : save_bin_buffer(3))
 menubar.add_cascade(label="Save buffer", menu=savemenu)
 
 loadmenu = Tkinter.Menu(menubar, tearoff=0)
+loadmenu.add_command(label="Original", command=load_original)
 loadmenu.add_command(label="Greyscale Slot 1", command=lambda : load_gs_buffer(1))
 loadmenu.add_command(label="Greyscale Slot 2", command=lambda : load_gs_buffer(2))
 loadmenu.add_command(label="Greyscale Slot 3", command=lambda : load_gs_buffer(3))
