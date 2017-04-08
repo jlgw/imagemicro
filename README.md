@@ -1,0 +1,9 @@
+# imagemicro
+Small tkinter gui tool for basic greyscale image processing using PIL and scipy
+
+Usage: Open an image using the file dialog. The image is automatically converted to greyscale. The current image, if greyscale, may be saved to one of the greyscale slots from which it can later be loaded. It can also be saved to a file through the File menu. Threshold allows the user to interactively threshold the image, turning it into a binary image. Binary images may be saved in one of the binary slots or to file through the File menu. GS Operations (greyscale operations) include some routines for edge detection. Bin Operations (binary operations) operate on binary images. The binary image may be inverted (NOT), or a logical operation (AND, OR, XOR) may be used along with another binary image. The logical operation option opens a dialog where the user selects the binary operation and which other binary image is to be used (the number is which binary slot the other binary image is saved in), and the result is then shown in the current image. scipy.ndimage provides the binary operations erosion, dilation, opening, closing, and fill holes. The first four open a menu which permits setting the size of the kernel. Currently, this is a square kernel. A logger is included which prints the python code used to produce the actions performed in the gui by the user.
+
+Todo: Clean up the code, remove the use of global variables and change to lambda functions, separate UI from function further, split up into separate files. Features that would be useful are manual removal of binary objects, undo functionality, binary masking of greyscale images and greyscale image arithmetic. Cool features would be low/high pass filters and watersheds.
+
+
+Please note that this is a work in progress and primarily created as a learning exercise.
