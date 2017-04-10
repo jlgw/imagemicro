@@ -2,6 +2,7 @@ import PIL
 import PIL.Image
 import PIL.ImageTk
 import PIL.ImageDraw
+import PIL.ImageChops
 import PIL.ImageFilter
 import Tkinter
 import tkFileDialog
@@ -14,7 +15,19 @@ import numpy as np
 
 
 logger=True
+class testwindow():
+    def __init__(self):
+        self.window = Tkinter.Toplevel()
+        self.window.bind("<Return>", self.apply)
+        self.window.bind("<Escape>", self.cancel)
+        self.window.protocol("WM_DELETE_WINDOW", self.cancel) 
+    def cancel(self, event=None):
+        self.window.destroy()
+    def apply(self, event=None):
+        pass
 
+
+        
 class imagewindow:
     def __init__(self, master):
         self.master = master
@@ -65,10 +78,10 @@ class imagewindow:
         binops = Tkinter.Menu(menubar, tearoff=0)
         binops.add_command(label="Logical operations", command = self.logical_operators)
         binops.add_command(label="Invert", command = self.invert_bin)
-        binops.add_command(label="Erosion", command = self.erosion_option)
-        binops.add_command(label="Dilation", command = self.dilation_option)
-        binops.add_command(label="Opening", command = self.opening_option)
-        binops.add_command(label="Closing", command = self.closing_option)
+        binops.add_command(label="Erosion", command = lambda : self.morph_options("erosion"))
+        binops.add_command(label="Dilation", command =lambda : self.morph_options("dilation"))
+        binops.add_command(label="Opening", command = lambda : self.morph_options("opening"))
+        binops.add_command(label="Closing", command = lambda : self.morph_options("closing"))
         binops.add_command(label="Fill holes", command = self.fill_option)
 
         menubar.add_cascade(label="Bin Operations", menu=binops)
@@ -111,7 +124,6 @@ class imagewindow:
         print 'img.save("' + filename + '")'
 
     def select_points(self,fn):
-        #ugly hack to solve the return issue, try to come up with better solution
         #Permits the user to interactively select points which are then returned as a list
         img_copy = self.img.copy()
         self.img = self.img.convert(mode="RGB")
@@ -126,6 +138,7 @@ class imagewindow:
             for i in point_list[start:]:
                 draw.ellipse((i[0]-r, i[1]-r, i[0]+r, i[1]+r), fill=(0,255,0,0))
             self.update()
+            del draw
 
         def click(event):
             point_list.append((event.x, event.y))
@@ -138,13 +151,15 @@ class imagewindow:
             point_self(1)
             self.update()
 
-        def done():
+        def done(event=None):
             root.unbind("<ButtonPress-1>")
+            root.unbind("<ButtonPress-3>")
             self.img = img_copy.copy()
             select_window.destroy()
             fn(point_list)
 
         root.bind("<ButtonPress-1>", click)
+        root.bind("<ButtonPress-3>", done)
         select_window = Tkinter.Toplevel()
         
         hmenubar = Tkinter.Menu(root)
@@ -161,11 +176,14 @@ class imagewindow:
         # not sure what option would be best for that
         old = self.img.copy()
         hist_img = visual_histogram(self.img)
+        
         self.mval = 0 #think about better solution here
+        self.uval = 256
+
         if hist_img==None:
             #Only accept greyscale image
             return
-        def cancel():
+        def cancel(event=None):
             #reverts to the old image and closes the histogram prompt
             histogram_window.destroy()
             self.img=old
@@ -174,30 +192,48 @@ class imagewindow:
             #shows red binary image superimposed on input greyscale image
             if mv==None:
                 self.mval = event.x # cut-off value
-            else:
-                # this gives the default self.mval (cut-off value) as the maximum position in the histogram
+                if self.mval > self.uval:
+                    self.uval=self.mval
+            elif mv==1:
+                # this gives the default self.mval (cut-off value) as the maximum value position in the histogram
                 # this isn't ideal but it's better than no default value at all
                 self.mval = self.img.histogram().index(max(self.img.histogram()))
             colors = old.convert(mode="RGBA").split()
-            colors[0].paste(old.point(lambda p: (255*(p>self.mval))))
+            colors[0].paste(old.point(lambda p: (255*(p>self.mval)*(p<self.uval))))
             colors[1].paste(old.point(lambda p: 0))
             colors[2].paste(old.point(lambda p: 0))
             
             self.bin = PIL.Image.merge("RGBA", colors) #maybe change to something more reasonable
-            self.bin.putalpha(old.point(lambda p: (255*(p>self.mval))))
+            self.bin.putalpha(old.point(lambda p: (255*(p>self.mval)*(p<self.uval))))
             self.img = PIL.Image.blend(self.bin, old.convert(mode="RGBA"), 0.5)
+            himg = visual_histogram(old, self.mval, self.uval)
+            image1 = PIL.ImageTk.PhotoImage(himg)
+            label_image.configure(image = image1)
+            label_image.image = image1
             self.update()
 
-        def apply():
+        def rightclick(event):
+            self.uval = event.x
+            if self.uval<self.mval:
+                self.uval=self.mval
+            click(mv=2)
+
+        def apply(event=None):
             #applies changes and saves the binary image in the primary buffer
             self.img = self.bin.convert(mode='L').point(lambda p: 255*(p>0)).convert(mode='1')
             if logger:
-                print "img = img.point(lambda p: 255*(p>" + str(self.mval) + "))"
+                print ""
+                #change later
+                #print "img = img.point(lambda p: 255*(p>" + str(self.mval) + "))"
             histogram_window.destroy()
             self.update()
 
         histogram_window = Tkinter.Toplevel()
         histogram_window.bind("<ButtonPress-1>", click)
+        histogram_window.bind("<ButtonPress-3>", rightclick)
+        histogram_window.bind("<Return>", apply)
+        histogram_window.bind("<Escape>", cancel)
+        histogram_window.protocol("WM_DELETE_WINDOW", cancel) #close by x button does the same as cancel
         histogram_window.geometry('%dx%d' % (hist_img.size[0],hist_img.size[1]))
 
         tkpi = PIL.ImageTk.PhotoImage(hist_img)
@@ -207,9 +243,9 @@ class imagewindow:
         hmenubar = Tkinter.Menu(root)
 
         hmenubar.add_command(label="apply", command=apply)
-        histogram_window.protocol("WM_DELETE_WINDOW", cancel) #close by x button does the same as cancel
         histogram_window.config(menu=hmenubar)
         click(mv=1)
+        histogram_window.mainloop()
 
     def save_gs_buffer(self, slot):
         #save primary buffer (img) in greyscale buffer number (slot - int)
@@ -295,7 +331,7 @@ class imagewindow:
         def AND():
             num = int(e.get())
             if self.bin_buffers!=None:
-                self.img = PIL.ImageChops.logical_and(self.img,bin_buffers[num])
+                self.img = PIL.ImageChops.logical_and(self.img,self.bin_buffers[num])
                 if logger:
                     print "img = (img and binimg" + str(num) + ")"
             top.destroy()
@@ -303,7 +339,7 @@ class imagewindow:
         def OR():
             num = int(e.get())
             if self.bin_buffers!=None:
-                self.img = PIL.ImageChops.logical_or(self.img,bin_buffers[num])
+                self.img = PIL.ImageChops.logical_or(self.img,self.bin_buffers[num])
                 if logger:
                     print "img = (img or binimg" + str(num) + ")"
             top.destroy()
@@ -312,7 +348,7 @@ class imagewindow:
             num = int(e.get())
             if self.bin_buffers!=None:
                 tmp1 = PIL.ImageChops.subtract(self.img, self.bin_buffers[num])
-                tmp2 = PIL.ImageChops.subtract(bin_buffers[num], self.img)
+                tmp2 = PIL.ImageChops.subtract(self.bin_buffers[num], self.img)
                 self.img = PIL.ImageChops.logical_or(tmp1, tmp2)
                 if logger:
                     print "tmp1 = PIL.ImageChops.subtract(img, binimg" + str(num) + ")"
@@ -361,44 +397,14 @@ class imagewindow:
         self.update()
 
 
-    def erosion_option(self):
+    def morph_options(self, morph_type):
         top = Tkinter.Toplevel(height=300, width=300)
         e = Tkinter.Entry(top)
         e.insert(Tkinter.END, "2")
         e.pack()
         e.focus_set()
         apply = Tkinter.Button(top, text="apply", width=10, 
-                command=lambda : self.morph(int(e.get()), top, "erosion"))
-        apply.pack()
-
-    def dilation_option(self):
-        top = Tkinter.Toplevel(height=300, width=300)
-        e = Tkinter.Entry(top)
-        e.insert(Tkinter.END, "2")
-        e.pack()
-        e.focus_set()
-        apply = Tkinter.Button(top, text="apply", width=10, 
-                command=lambda : self.morph(int(e.get()), top, "dilation"))
-        apply.pack()
-
-    def opening_option(self):
-        top = Tkinter.Toplevel(height=300, width=300)
-        e = Tkinter.Entry(top)
-        e.insert(Tkinter.END, "2")
-        e.pack()
-        e.focus_set()
-        apply = Tkinter.Button(top, text="apply", width=10, 
-                command=lambda : self.morph(int(e.get()), top, "opening"))
-        apply.pack()
-
-    def closing_option(self):
-        top = Tkinter.Toplevel(height=300, width=300)
-        e = Tkinter.Entry(top)
-        e.insert(Tkinter.END, "2")
-        e.pack()
-        e.focus_set()
-        apply = Tkinter.Button(top, text="apply", width=10, 
-                command=lambda : self.morph(int(e.get()), top, "closing"))
+                command=lambda : self.morph(int(e.get()), top, morph_type))
         apply.pack()
 
     def fill_option(self):
@@ -406,19 +412,24 @@ class imagewindow:
         top = Tkinter.Toplevel(height=300, width=300)
         self.morph(0,top,"fill_holes")
 
-def visual_histogram(img):
+def visual_histogram(img, lowval=None, highval=None):
     #input: image (preferably greyscale)
     #output: visual histogram as image, binary image, 256x100
+    if lowval==None:
+        lowval=0
+    if highval==None:
+        highval=255
     hist = img.histogram()
     if len(hist)!=256:
         print "Convert to greyscale first"
         return
     maxval = max(hist)
     normheight = [int(100*i/maxval) for i in hist]
-    histimg = PIL.Image.new(mode="1", size=(256,100))
+    histimg = PIL.Image.new(mode="RGB", size=(256,100))
     draw = PIL.ImageDraw.Draw(histimg)
     for i in range(256):
-        draw.line((i,100) + (i,100-normheight[i]), fill=255)
+        draw.line((i,100) + (i,100-normheight[i]), 
+                fill=(255,255*(i>lowval)*(i<highval)*(highval>lowval),255*(i>lowval)*(i<highval)))
     del draw
     return histimg
 
@@ -437,4 +448,3 @@ root = Tkinter.Tk()
 root.geometry('+%d+%d' % (100,100))
 
 gui = imagewindow(root)
-#gui.update()
