@@ -1,6 +1,8 @@
 import numpy as np
 import PIL
 import PIL.Image
+import PIL.ImageChops
+import scipy
 
 def visual_histogram(img, lowval=None, highval=None):
     #input: image (preferably greyscale)
@@ -32,3 +34,29 @@ def unit_disk(n):
             if (i-h)**2+(j-h)**2>h**2+.5:
                 mat[i,j]=0
     return mat
+
+def watershed_pts(img, point_list):
+    #input: image, list of points
+    #output: watershed image where each point is a basin marker, each basin is
+    #given a unique shade
+    #Note: point_list should be of length < 256
+    markers = np.zeros(img.size).astype(np.int16)
+    factor = 256/len(point_list) # just for looks and easier use
+    for i,a in enumerate(point_list):
+        markers[a[0],a[1]] = i*factor
+    imin = np.array(img).transpose()
+    imgdata = scipy.ndimage.measurements.watershed_ift(np.array(imin), markers)
+    img2 = PIL.Image.new(mode="L", size=img.size)
+    img2.putdata(imgdata.transpose().flatten())
+    return img2
+
+def grid(img):
+    #input: image
+    #output: list of points, making up an NxN grid uniform with respect
+    #to the x and y axes
+    xpts = [int((0.5+i)*self.img.size[0]/n) for i in range(n)]
+    ypts = [int((0.5+i)*self.img.size[1]/n) for i in range(n)]
+    for i,a in enumerate(xpts):
+        for j,b in enumerate(ypts):
+            points[i*n+j] = (a,b)
+    return points

@@ -13,7 +13,7 @@ import scipy.ndimage
 import numpy as np
 
 from dialog_window import dialog_window
-from tools import visual_histogram, unit_disk
+from tools import visual_histogram, unit_disk, watershed_pts, grid
 
 #img is the primary display buffer
 #should also split up into multiple files and separate UI from methods
@@ -281,7 +281,7 @@ class imagewindow:
         histogram_window.mainloop()
 
     def save_gs_buffer(self, slot):
-        #save primary buffer (img) in greyscale buffer number (slot - int)
+        #save primary greyscale buffer (gimg) in greyscale buffer number (slot - int)
         #print slot
         if self.gimg.mode=="L":
             self.greyscale_buffers[slot] = self.gimg.copy()
@@ -292,7 +292,7 @@ class imagewindow:
             print "# Not a greyscale image"
 
     def load_gs_buffer(self, slot):
-        #load greyscale buffer number (slot - int) into primary buffer (img)
+        #load greyscale buffer number (slot - int) into primary greyscale buffer (gimg)
         if self.greyscale_buffers[slot]!=None:
             self.gimg = self.greyscale_buffers[slot]
             print "# Loaded greyscale slot " + str(slot)
@@ -303,7 +303,7 @@ class imagewindow:
             print "# greyscale buffer " + str(slot) + " is empty"
 
     def save_bin_buffer(self, slot):
-        #save primary buffer (img) in binary buffer number (slot - int)
+        #save primary binary buffer (bimg) in binary buffer number (slot - int)
         if self.bimg.mode=="1":
             self.bin_buffers[slot] = self.bimg.copy()
             print "# Saved in greyscale slot " + str(slot)
@@ -313,7 +313,7 @@ class imagewindow:
             print "# Not a binary image"
 
     def load_bin_buffer(self, slot):
-        #load binary buffer number (slot - int) into primary buffer (img)
+        #load binary buffer number (slot - int) into primary binary buffer (bimg)
         if self.bin_buffers[slot]!=None:
             self.bimg = self.bin_buffers[slot]
             print "# Loaded binary slot " + str(slot)
@@ -329,48 +329,35 @@ class imagewindow:
 
     def sobel(self):
         tmpdata = scipy.ndimage.sobel(self.gimg)
-        self.gimg.putdata(tmpdata.flatten())
+        sobimg = PIL.Image.new(mode="L", size=self.gimg.size)
+        sobimg.putdata(tmpdata.flatten())
+        self.gimg = sobimg
         self.update()
 
-    def grid(self, fn):
+    def run_grid(self, fn):
         # runs the function with n by n grid, n supplied by user
         top = dialog_window()
         e = Tkinter.Entry(top)
         e.insert(Tkinter.END, "5")
         e.pack()
         e.focus_set()
-        def construct_run(n): #this can probably be simplified
-            xpts = [int((0.5+i)*self.img.size[0]/n) for i in range(n)]
-            ypts = [int((0.5+i)*self.img.size[1]/n) for i in range(n)]
-            points = n*n*[0]
-            for i,a in enumerate(xpts):
-                for j,b in enumerate(ypts):
-                    points[i*n+j] = (a,b)
-            fn(points)
+        def run(n): #this can probably be simplified
+            fn(grid(self.gimg))
             top.destroy()
         applyfn = lambda : construct_run(int(e.get()))
         top.setapply(applyfn)
         apply = Tkinter.Button(top, text="apply", width=10, command=applyfn)
         apply.pack()
         
-        
     def watershed(self, point_list):
-        markers = np.zeros(self.gimg.size).astype(np.int16)
-        factor = 256/len(point_list) # just for looks and easier use
-        for i,a in enumerate(point_list):
-            markers[a[0],a[1]] = i*factor
-        imin = np.array(self.gimg).transpose()
-        imgdata = scipy.ndimage.measurements.watershed_ift(np.array(imin), markers)
-        img2 = PIL.Image.new(mode="L", size=self.gimg.size)
-        img2.putdata(imgdata.transpose().flatten())
         if logger:
             print "points = " + str(point_list)
-            print "# ATTENTION REQUIRED - definition on markers missing"
-            print "data = scipy.ndimage.measurements.watershed_ift(np.array(" +str(imin) + "), markers)"
-        self.gimg = img2.copy()
+            print "data = watershed_pts(points"
+        self.gimg = watershed_pts(self.gimg, point_list)
         self.update()
 
     def invert_bin(self):
+        self.show_binary=1 
         if self.bimg.mode=="1":
             self.bimg = PIL.ImageChops.invert(self.bimg)
             self.update()
@@ -378,7 +365,10 @@ class imagewindow:
             print "Not a binary image"
 
     def logical_operators(self):
-        top = Tkinter.Toplevel()
+        # Performs the chosen binary operation on the selected binary 
+        # buffers (def 1 and 2) and places the result in primary buffer (bimg)
+        self.show_binary=1 
+        top = dialog_window()
         e1 = Tkinter.Entry(top)
         e1.insert(Tkinter.END, "1")
         e1.pack()
@@ -386,41 +376,24 @@ class imagewindow:
         e2 = Tkinter.Entry(top)
         e2.insert(Tkinter.END, "2")
         e2.pack()
-        e2.focus_set()
-        def AND():
+
+        def logic(op):
             n,m = (int(e1.get()),int(e2.get()))
-            if self.bin_buffers!=None:
-                self.bimg = PIL.ImageChops.logical_and(self.bin_buffers[n],self.bin_buffers[m])
-                if logger:
-                    print ""
-                    #print "img = (img and binimg" + str(num) + ")"
-            top.destroy()
-            self.update()
-        def OR():
-            n,m = (int(e1.get()),int(e2.get()))
-            if self.bin_buffers!=None:
-                self.bimg = PIL.ImageChops.logical_or(self.bin_buffers[n],self.bin_buffers[m])                
-                if logger:
-                    print ""
-                    print "img = (img or binimg" + str(num) + ")"
-            top.destroy()
-            self.update()
-        def XOR():
-            n,m = (int(e1.get()),int(e2.get()))
-            if self.bin_buffers!=None:
-                tmp1 = PIL.ImageChops.subtract(self.bin_buffers[n],self.bin_buffers[m])
-                tmp2 = PIL.ImageChops.subtract(self.bin_buffers[m], self.bin_buffers[n])
-                self.bimg = PIL.ImageChops.logical_or(tmp1, tmp2)
-                if logger:
-                    #print "tmp1 = PIL.ImageChops.subtract(img, binimg" + str(num) + ")"
-                    #print "tmp2 = PIL.ImageChops.subtract(binimg" + str(num) + ", img)"
-                    print ""
+            if op=="and":
+                self.bimg = PIL.ImageChops.logical_and(self.bin_buffers[n], self.bin_buffers[m])
+            elif op=="or":
+                self.bimg = PIL.ImageChops.logical_or(self.bin_buffers[n], self.bin_buffers[m])
+            elif op=="xor":
+                self.bimg = PIL.ImageChops.logical_xor(self.bin_buffers[n], self.bin_buffers[m])
+            if logger:
+                print ("bimg = PIL.ImageChops.logical_" + op + "(binimg" +
+                        str(n) + ", binimg" + str(m) + ")")
             top.destroy()
             self.update()
 
-        l_and= Tkinter.Button(top, text="AND", width=10, command=AND)
-        l_or = Tkinter.Button(top, text="OR", width=10, command=OR)
-        l_xor = Tkinter.Button(top, text="XOR", width=10, command=XOR)
+        l_and= Tkinter.Button(top, text="AND", width=10, command=lambda : logic("and"))
+        l_or = Tkinter.Button(top, text="OR", width=10, command=lambda : logic("or"))
+        l_xor = Tkinter.Button(top, text="XOR", width=10, command=lambda : logic("xor"))
         l_and.pack()
         l_or.pack()
         l_xor.pack()
@@ -465,9 +438,9 @@ class imagewindow:
         e.insert(Tkinter.END, "2")
         e.pack()
         e.focus_set()
-        applyfun = lambda : self.morph(int(e.get()), top, morph_type)
-        top.setapply(applyfun)
-        apply = Tkinter.Button(top, text="apply", width=10, command= applyfun)
+        applyfn = lambda : self.morph(int(e.get()), top, morph_type)
+        top.setapply(applyfn)
+        apply = Tkinter.Button(top, text="apply", width=10, command= applyfn)
         apply.pack()
 
     def fill_option(self):
