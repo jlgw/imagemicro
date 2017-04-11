@@ -1,3 +1,5 @@
+import os.path
+import sys
 import PIL
 import PIL.Image
 import PIL.ImageTk
@@ -10,6 +12,9 @@ import scipy
 import scipy.ndimage
 import numpy as np
 
+from dialog_window import dialog_window
+from tools import visual_histogram, unit_disk
+
 #img is the primary display buffer
 #should also split up into multiple files and separate UI from methods
 
@@ -17,13 +22,13 @@ import numpy as np
 logger=True
 
 class imagewindow:
-    def __init__(self, master):
+    def __init__(self, master, filename=None):
         self.master = master
         menubar = Tkinter.Menu(master)
         
         self.img = PIL.Image.new('L', (800,500)) #keep here for now
-        self.gimg = PIL.Image.new('L', (800,500)) #keep here for now
-        self.bimg = PIL.Image.new('1', (800,500)) #keep here for now
+        self.gimg = PIL.Image.new('L', (800,500)) 
+        self.bimg = PIL.Image.new('1', (800,500))
 
         filemenu = Tkinter.Menu(menubar, tearoff=0)
         filemenu.add_command(label="Open", command=self.openfile)
@@ -66,8 +71,8 @@ class imagewindow:
         gsops.add_command(label="FIND_EDGES", command=self.edgedetect_find_edges)
         gsops.add_command(label="Sobel", command=self.sobel)
         wshedmenu = Tkinter.Menu(gsops, tearoff=0)
-        wshedmenu.add_command(label="Watershed", command=lambda : self.select_points(self.watershed))
-        wshedmenu.add_command(label="Watershed grid", command=lambda : self.grid(self.watershed))
+        wshedmenu.add_command(label="Manual", command=lambda : self.select_points(self.watershed))
+        wshedmenu.add_command(label="Grid", command=lambda : self.grid(self.watershed))
         gsops.add_cascade(label="Watershed", menu=wshedmenu)
         menubar.add_cascade(label="GS Operations", menu=gsops)
 
@@ -87,17 +92,17 @@ class imagewindow:
         image1 = PIL.ImageTk.PhotoImage(self.img)
         self.label_image = Tkinter.Label(self.master, image=image1)
         self.label_image.pack(side = "bottom", fill = "both", expand = "yes")
+        if filename!=None:
+            self.openfile(filename)
         master.mainloop()
 
     def update(self):
-        #updates the current instance
-        #there seems to be a recursion issue here
         colors = self.bimg.convert(mode="RGBA").split()
         colors[0].paste(self.bimg.point(lambda p: (255*(p>0))))
         colors[1].paste(self.bimg.point(lambda p: 0))
         colors[2].paste(self.bimg.point(lambda p: 0))
         
-        bin = PIL.Image.merge("RGBA", colors) #maybe change to something more reasonable
+        bin = PIL.Image.merge("RGBA", colors) 
         bin.putalpha(self.bimg)
 
         self.img = self.gimg.convert("RGBA")
@@ -109,11 +114,6 @@ class imagewindow:
         self.label_image.configure(image = image1)
         self.label_image.image = image1
 
-    def greyscale(self):
-        #convert to greyscale - deprecated? we do this by default with openfile()
-        self.img = self.img.convert('L')
-        self.update()
-
     def toggle_binary(self):
         if self.show_binary==1:
             self.show_binary=0
@@ -121,14 +121,16 @@ class imagewindow:
             self.show_binary=1
         self.update()
 
-    def openfile(self):
-        filename = tkFileDialog.askopenfilename()
-        self.img = PIL.Image.open(filename).convert("L") #remove?
+    def openfile(self, filename=None):
+        if filename==None:
+            filename = tkFileDialog.askopenfilename()
         self.gimg = PIL.Image.open(filename).convert("L")
         self.bimg = PIL.Image.new(mode="1", size=self.gimg.size)
-        self.orig = self.img.copy()
+        self.orig = self.gimg.copy()
         print 'img = PIL.Image.open("' + filename + '").convert("L")'
         print 'orig = img.copy()'
+        fhead, ftail = os.path.split(filename)
+        self.master.wm_title(ftail)
         self.update()
 
     def load_original(self):
@@ -141,7 +143,9 @@ class imagewindow:
         print 'img.save("' + filename + '")'
 
     def select_points(self,fn):
-        #Permits the user to interactively select points which are then returned as a list
+        #Permits the user to interactively select points
+        #function fn is then run with list of points as argument
+        #right-click - done
         img_copy = self.gimg.copy()
         self.gimg = self.gimg.convert(mode="RGB")
         point_list = []
@@ -168,22 +172,30 @@ class imagewindow:
             point_self(1)
             self.update()
 
-        def done(event=None):
-            root.unbind("<ButtonPress-1>")
-            root.unbind("<ButtonPress-3>")
+        def done(event=None, cancel=False):
+            self.master.unbind("<ButtonPress-1>")
+            self.master.unbind("<ButtonPress-3>")
             self.gimg = img_copy.copy()
             select_window.destroy()
-            fn(point_list)
+            if cancel==False:
+                fn(point_list)
+            else:
+                print "soup"
 
+        cancel = lambda event=None: done(event, cancel=True)
         root.bind("<ButtonPress-1>", click)
         root.bind("<ButtonPress-3>", done)
-        select_window = Tkinter.Toplevel()
-        
+        #select_window = Tkinter.Toplevel()
+
+        select_window = dialog_window()
+        select_window.setapply(done)
+        select_window.setcancel(cancel)
+
         hmenubar = Tkinter.Menu(root)
 
         hmenubar.add_command(label="done", command=done)
         hmenubar.add_command(label="undo", command=undo)
-        select_window.protocol("WM_DELETE_WINDOW", done)
+        #select_window.protocol("WM_DELETE_WINDOW", done)
         select_window.config(menu=hmenubar)
             
     def threshold(self):
@@ -249,12 +261,11 @@ class imagewindow:
             histogram_window.destroy()
             self.update()
 
-        histogram_window = Tkinter.Toplevel()
+        histogram_window = dialog_window()
         histogram_window.bind("<ButtonPress-1>", click)
         histogram_window.bind("<ButtonPress-3>", rightclick)
-        histogram_window.bind("<Return>", apply)
-        histogram_window.bind("<Escape>", cancel)
-        histogram_window.protocol("WM_DELETE_WINDOW", cancel) #close by x button does the same as cancel
+        histogram_window.setapply(apply)
+        histogram_window.setcancel(cancel)
         histogram_window.geometry('%dx%d' % (hist_img.size[0],hist_img.size[1]))
 
         tkpi = PIL.ImageTk.PhotoImage(hist_img)
@@ -264,6 +275,7 @@ class imagewindow:
         hmenubar = Tkinter.Menu(root)
 
         hmenubar.add_command(label="apply", command=apply)
+        hmenubar.add_command(label="cancel", command=cancel)
         histogram_window.config(menu=hmenubar)
         click(mv=1)
         histogram_window.mainloop()
@@ -322,7 +334,7 @@ class imagewindow:
 
     def grid(self, fn):
         # runs the function with n by n grid, n supplied by user
-        top = Tkinter.Toplevel(height=300, width=300)
+        top = dialog_window()
         e = Tkinter.Entry(top)
         e.insert(Tkinter.END, "5")
         e.pack()
@@ -336,9 +348,9 @@ class imagewindow:
                     points[i*n+j] = (a,b)
             fn(points)
             top.destroy()
-        
-        apply = Tkinter.Button(top, text="apply", width=10, 
-                command=lambda : construct_run(int(e.get())))
+        applyfn = lambda : construct_run(int(e.get()))
+        top.setapply(applyfn)
+        apply = Tkinter.Button(top, text="apply", width=10, command=applyfn)
         apply.pack()
         
         
@@ -366,36 +378,43 @@ class imagewindow:
             print "Not a binary image"
 
     def logical_operators(self):
-        top = Tkinter.Toplevel(height=300, width=300)
-        e = Tkinter.Entry(top)
-        e.insert(Tkinter.END, "1")
-        e.pack()
-        e.focus_set()
+        top = Tkinter.Toplevel()
+        e1 = Tkinter.Entry(top)
+        e1.insert(Tkinter.END, "1")
+        e1.pack()
+        e1.focus_set()
+        e2 = Tkinter.Entry(top)
+        e2.insert(Tkinter.END, "2")
+        e2.pack()
+        e2.focus_set()
         def AND():
-            num = int(e.get())
+            n,m = (int(e1.get()),int(e2.get()))
             if self.bin_buffers!=None:
-                self.bimg = PIL.ImageChops.logical_and(self.img,self.bin_buffers[num])
+                self.bimg = PIL.ImageChops.logical_and(self.bin_buffers[n],self.bin_buffers[m])
                 if logger:
-                    print "img = (img and binimg" + str(num) + ")"
+                    print ""
+                    #print "img = (img and binimg" + str(num) + ")"
             top.destroy()
             self.update()
         def OR():
-            num = int(e.get())
+            n,m = (int(e1.get()),int(e2.get()))
             if self.bin_buffers!=None:
-                self.bimg = PIL.ImageChops.logical_or(self.img,self.bin_buffers[num])
+                self.bimg = PIL.ImageChops.logical_or(self.bin_buffers[n],self.bin_buffers[m])                
                 if logger:
+                    print ""
                     print "img = (img or binimg" + str(num) + ")"
             top.destroy()
             self.update()
         def XOR():
-            num = int(e.get())
+            n,m = (int(e1.get()),int(e2.get()))
             if self.bin_buffers!=None:
-                tmp1 = PIL.ImageChops.subtract(self.bimg, self.bin_buffers[num])
-                tmp2 = PIL.ImageChops.subtract(self.bin_buffers[num], self.bimg)
+                tmp1 = PIL.ImageChops.subtract(self.bin_buffers[n],self.bin_buffers[m])
+                tmp2 = PIL.ImageChops.subtract(self.bin_buffers[m], self.bin_buffers[n])
                 self.bimg = PIL.ImageChops.logical_or(tmp1, tmp2)
                 if logger:
-                    print "tmp1 = PIL.ImageChops.subtract(img, binimg" + str(num) + ")"
-                    print "tmp2 = PIL.ImageChops.subtract(binimg" + str(num) + ", img)"
+                    #print "tmp1 = PIL.ImageChops.subtract(img, binimg" + str(num) + ")"
+                    #print "tmp2 = PIL.ImageChops.subtract(binimg" + str(num) + ", img)"
+                    print ""
             top.destroy()
             self.update()
 
@@ -441,53 +460,24 @@ class imagewindow:
 
 
     def morph_options(self, morph_type):
-        top = Tkinter.Toplevel(height=300, width=300)
+        top = dialog_window()
         e = Tkinter.Entry(top)
         e.insert(Tkinter.END, "2")
         e.pack()
         e.focus_set()
-        apply = Tkinter.Button(top, text="apply", width=10, 
-                command=lambda : self.morph(int(e.get()), top, morph_type))
+        applyfun = lambda : self.morph(int(e.get()), top, morph_type)
+        top.setapply(applyfun)
+        apply = Tkinter.Button(top, text="apply", width=10, command= applyfun)
         apply.pack()
 
     def fill_option(self):
         #maybe add options later though not strictly necessary
-        top = Tkinter.Toplevel(height=300, width=300)
+        top = Tkinter.Toplevel()
         self.morph(0,top,"fill_holes")
-
-def visual_histogram(img, lowval=None, highval=None):
-    #input: image (preferably greyscale)
-    #output: visual histogram as image, binary image, 256x100
-    if lowval==None:
-        lowval=0
-    if highval==None:
-        highval=255
-    hist = img.histogram()
-    if len(hist)!=256:
-        print "Convert to greyscale first"
-        return
-    maxval = max(hist)
-    normheight = [int(100*i/maxval) for i in hist]
-    histimg = PIL.Image.new(mode="RGB", size=(256,100))
-    draw = PIL.ImageDraw.Draw(histimg)
-    for i in range(256):
-        draw.line((i,100) + (i,100-normheight[i]), 
-                fill=(255,255*(i>lowval)*(i<highval)*(highval>lowval),255*(i>lowval)*(i<highval)))
-    del draw
-    return histimg
-
-def unit_disk(n):
-    #Make this faster later if necessary, probably good enough for now
-    h = (n-1)/2.
-    mat = np.ones((n,n))
-    for i in range(n):
-        for j in range(n):
-            if (i-h)**2+(j-h)**2>h**2+.5:
-                mat[i,j]=0
-    return mat
-
 
 root = Tkinter.Tk()
 root.geometry('+%d+%d' % (100,100))
-
-gui = imagewindow(root)
+filename=None
+if len(sys.argv)>1:
+    filename=str(sys.argv[1])
+gui = imagewindow(root, filename)
