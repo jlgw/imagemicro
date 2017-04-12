@@ -3,6 +3,7 @@ import PIL
 import PIL.Image
 import PIL.ImageChops
 import scipy
+import scipy.ndimage
 
 def visual_histogram(img, lowval=None, highval=None):
     #input: image (preferably greyscale)
@@ -50,13 +51,92 @@ def watershed_pts(img, point_list):
     img2.putdata(imgdata.transpose().flatten())
     return img2
 
-def grid(img):
+def grid(img, n):
     #input: image
     #output: list of points, making up an NxN grid uniform with respect
     #to the x and y axes
-    xpts = [int((0.5+i)*self.img.size[0]/n) for i in range(n)]
-    ypts = [int((0.5+i)*self.img.size[1]/n) for i in range(n)]
+    points = n*n*[0]
+    xpts = [int((0.5+i)*img.size[0]/n) for i in range(n)]
+    ypts = [int((0.5+i)*img.size[1]/n) for i in range(n)]
     for i,a in enumerate(xpts):
         for j,b in enumerate(ypts):
             points[i*n+j] = (a,b)
     return points
+
+PIL_filters = ["BLUR", "SMOOTH_MORE", "CONTOUR", "DETAIL", "EDGE_ENHANCE",
+        "EDGE_ENHANCE_MORE", "EMBOSS", "FIND_EDGES", "SHARPEN", "SMOOTH"]
+
+def filter(filtername):
+    #Takes the name of a filter and returns the filter in question
+    #Seems like there should be an easier way to do this safely
+    if filtername=="BLUR":
+        return PIL.ImageFilter.BLUR
+    elif filtername=="SMOOTH_MORE":
+        return PIL.ImageFilter.SMOOTH_MORE
+    elif filtername=="CONTOUR":
+        return PIL.ImageFilter.CONTOUR
+    elif filtername=="DETAIL":
+        return PIL.ImageFilter.DETAIL
+    elif filtername=="EDGE_ENHANCE":
+        return PIL.ImageFilter.EDGE_ENHANCE
+    elif filtername=="EDGE_ENHANCE_MORE":
+        return PIL.ImageFilter.EDGE_ENHANCE_MORE
+    elif filtername=="EMBOSS":
+        return PIL.ImageFilter.EMBOSS
+    elif filtername=="FIND_EDGES":
+        return PIL.ImageFilter.FIND_EDGES
+    elif filtername=="SHARPEN":
+        return PIL.ImageFilter.SHARPEN
+    elif filtername=="SMOOTH":
+        return PIL.ImageFilter.SMOOTH
+
+def shade_by_size(img):
+    #img.show()
+    #extracts the 256 largest elements and shades them based on size
+    ma, n = scipy.ndimage.measurements.label(np.array(img.convert("L")))
+    label, counts = np.unique(ma, return_counts=True)
+    objects = [x for (y,x) in sorted(zip(counts[1:],label[1:]))][-255::]
+
+    #This seems inefficient, there should be a better way of doing this
+    tot = np.zeros(ma.shape)
+    for i,o in enumerate(objects):
+        tmp = ma.copy()
+        tmp[tmp!=o]=0
+        tmp[tmp==o]=i+1
+        tot += tmp
+    nimg = PIL.Image.new(mode="L", size=img.size)
+    nimg.putdata(tot.flatten())
+    return nimg
+
+def linbin(img, bins = 12):
+    ma, n = scipy.ndimage.measurements.label(np.array(img.convert("L")))
+    label, counts = np.unique(ma, return_counts=True)
+    label, counts = label[1:], counts[1:]
+
+    sortedobjects = [x for (y,x) in sorted(zip(counts,label))]
+    sortedcount = [counts[i-1] for i in sortedobjects]
+    #print sortedcount[-1]
+    linbins = np.linspace(0,sortedcount[-1], bins)
+    
+    #maybe improve this
+    bin_divide = list(np.digitize(sortedcount, linbins))
+    bin_count = [bin_divide.count(i) for i in range(bins)]
+    
+    return (bin_count, linbins)
+
+def logbin(img, bins = 12):
+    #counts size of each binary structure, puts into log bins
+    ma, n = scipy.ndimage.measurements.label(np.array(img.convert("L")))
+    label, counts = np.unique(ma, return_counts=True)
+    label, counts = label[1:], counts[1:]
+
+    sortedobjects = [x for (y,x) in sorted(zip(counts,label))]
+    sortedcount = [counts[i-1] for i in sortedobjects]
+    #print sortedcount[-1]
+    logbins = np.exp(np.linspace(0,np.log(sortedcount[-1]), bins))
+    
+    #maybe improve this
+    bin_divide = list(np.digitize(sortedcount, logbins))
+    bin_count = [bin_divide.count(i) for i in range(bins)]
+    
+    return (bin_count, logbins)
