@@ -15,7 +15,8 @@ import matplotlib.pyplot as plt
 
 from dialog_window import dialog_window
 from tools import visual_histogram, unit_disk, watershed_pts, grid, \
-        PIL_filters, filter, shade_by_size, linbin, logbin 
+        PIL_filters, filter, shade_by_size, linbin, logbin, \
+        highest_2nd_derivative
 
 #img is the primary display buffer
 #should also split up into multiple files and separate UI from methods
@@ -27,19 +28,21 @@ class Imagewindow:
     def __init__(self, master, filename=None):
         self.master = master
         
-        self.img = PIL.Image.new('L', (800,500)) #keep here for now
-        self.gimg = PIL.Image.new('L', (800,500)) 
+        self.img  = PIL.Image.new('L', (800,500)) #keep here for now
+        self.gimg = PIL.Image.new('L', (800,500))
         self.bimg = PIL.Image.new('1', (800,500))
         
         #constants, move to better place
-        self.gs_buffer_count = 3
+        self.gs_buffer_count  = 3
         self.bin_buffer_count = 4
         self.greyscale_buffers = self.gs_buffer_count*[None]
         self.bin_buffers = self.bin_buffer_count*[None]
-        self.show_binary = True
-        self.max_undos = 8
-        self.undolist = []
+
+        self.show_binary  = True
         self.resize_ratio = 1
+
+        self.max_undos = 8
+        self.undolist  = []
 
         menubar = Tkinter.Menu(master)
 
@@ -72,12 +75,16 @@ class Imagewindow:
         menubar.add_cascade(label="Save buffer", menu=savemenu)
         menubar.add_cascade(label="Load buffer", menu=loadmenu)
 
-        menubar.add_command(label="Threshold", command=self.threshold)
-        menubar.add_command(label="Toggle binary", command=self.toggle_binary)
+        menubar.add_command(label="Threshold", 
+                command=self.threshold)
+        menubar.add_command(label="Toggle binary", 
+                command=self.toggle_binary)
 
         gsops = Tkinter.Menu(menubar, tearoff=0)
-        gsops.add_command(label="FIND_EDGES", command=self.edgedetect_find_edges)
-        gsops.add_command(label="Sobel", command=self.sobel)
+        gsops.add_command(label="FIND_EDGES", 
+                command=self.edgedetect_find_edges)
+        gsops.add_command(label="Sobel",
+                command=self.sobel)
         
         filtermenu = Tkinter.Menu(gsops, tearoff=0)
         for f in PIL_filters:
@@ -86,27 +93,44 @@ class Imagewindow:
         gsops.add_cascade(label="PIL Filters", menu=filtermenu)
 
         wshedmenu = Tkinter.Menu(gsops, tearoff=0)
-        wshedmenu.add_command(label="Manual", command=lambda : self.select_points(self.watershed))
-        wshedmenu.add_command(label="Grid", command=lambda : self.run_grid(self.watershed))
+        wshedmenu.add_command(label="Manual", 
+                command=lambda : self.select_points(self.watershed))
+        wshedmenu.add_command(label="Grid", 
+                command=lambda : self.run_grid(self.watershed))
         gsops.add_cascade(label="Watershed", menu=wshedmenu)
         gsops.add_command(label="LUT Transform", command=self.lut)
         menubar.add_cascade(label="GS Operations", menu=gsops)
 
         binops = Tkinter.Menu(menubar, tearoff=0)
-        binops.add_command(label="Logical operations", command = self.logical_operators)
-        binops.add_command(label="Invert", command = self.invert_bin)
-        binops.add_command(label="Erosion", command = lambda : self.morph_options("erosion"))
-        binops.add_command(label="Dilation", command =lambda : self.morph_options("dilation"))
-        binops.add_command(label="Opening", command = lambda : self.morph_options("opening"))
-        binops.add_command(label="Closing", command = lambda : self.morph_options("closing"))
-        binops.add_command(label="Fill holes", command = self.fill_option)
-        binops.add_command(label="Largest brightest", command = self.shade)
+        binops.add_command(label="Logical operations", 
+                command = self.logical_operators)
+        binops.add_command(label="Invert", 
+                command = self.invert_bin)
+        pickmenu = Tkinter.Menu(binops, tearoff=0)
+        pickmenu.add_command(label="Reject",
+                command = lambda : self.picker("reject"))
+        pickmenu.add_command(label="Keep",
+                command = lambda : self.picker("keep"))
+        binops.add_cascade(label="Pick elements", menu=pickmenu)
+        binops.add_command(label="Erosion", 
+                command = lambda : self.morph_options("erosion"))
+        binops.add_command(label="Dilation", 
+                command = lambda : self.morph_options("dilation"))
+        binops.add_command(label="Opening", 
+                command = lambda : self.morph_options("opening"))
+        binops.add_command(label="Closing", 
+                command = lambda : self.morph_options("closing"))
+        binops.add_command(label="Fill holes", 
+                command = self.fill_option)
+        binops.add_command(label="Largest brightest", 
+                command = self.shade)
         menubar.add_cascade(label="Bin Operations", menu=binops)
 
-        
         anmenu = Tkinter.Menu(menubar, tearoff=0)
-        anmenu.add_command(label="Log bins", command = lambda : self.log_divide_bins())
-        anmenu.add_command(label="Lin bins", command = lambda : self.lin_divide_bins())
+        anmenu.add_command(label="Log bins", 
+                command = lambda : self.log_divide_bins())
+        anmenu.add_command(label="Lin bins", 
+                command = lambda : self.lin_divide_bins())
         menubar.add_cascade(label="Analysis", menu=anmenu)
 
         master.config(menu=menubar)
@@ -187,7 +211,7 @@ class Imagewindow:
         self.bimg = PIL.Image.new(mode="1", size=self.gimg.size)
         self.orig = self.gimg.copy()
         fhead, ftail = os.path.split(filename)
-        self.filename = filename
+        self.filename = ftail
         self.update()
         if logger:
             print 'gimg = PIL.Image.open("' + filename + '").convert("L")'
@@ -211,8 +235,8 @@ class Imagewindow:
         #right-click - done
         img_copy = self.gimg.copy()
         self.gimg = self.gimg.convert(mode="RGB")
-        print id(img_copy)
-        print id(self.gimg)
+        #print id(img_copy)
+        #print id(self.gimg)
         point_list = []
         def point_self(all=None):
             r = 2
@@ -267,21 +291,24 @@ class Imagewindow:
         # add thresholding to this
         # would be nice to have better interactivity
         # not sure what option would be best for that
-        old = self.gimg.copy()
+        gold = self.gimg.copy()
+        bold = self.bimg.copy()
         self.bimg = PIL.Image.new('1', self.gimg.size)
-        hist_img = visual_histogram(self.gimg)
+        hist_img  = visual_histogram(self.gimg)
         
-        self.mval = 0 #think about better solution here
+        self.mval = 0 
         self.uval = 256
 
         if hist_img==None:
             #Only accept greyscale image
             return
         def cancel(event=None):
-            #reverts to the old image and closes the histogram prompt
+            #reverts to the gold image and closes the histogram prompt
             histogram_window.destroy()
-            self.gimg=old
+            self.gimg = gold
+            self.bimg = bold
             self.update()
+
         def click(event=None, mv=None):
             if event!=None:
                 if event.widget!=label_image:
@@ -294,20 +321,32 @@ class Imagewindow:
             elif mv==1:
                 # this gives the default self.mval (cut-off value) as the maximum value position in the histogram
                 # this isn't ideal but it's better than no default value at all
-                self.mval = self.gimg.histogram().index(max(self.gimg.histogram()))
-            colors = old.convert(mode="RGBA").split()
-            colors[0].paste(old.point(lambda p: (255*(p>self.mval)*(p<self.uval))))
-            colors[1].paste(old.point(lambda p: 0))
-            colors[2].paste(old.point(lambda p: 0))
+                #self.mval = self.gimg.histogram().index(max(self.gimg.histogram()))
+                # alternate solution: highest 2nd derivative
+                # if it works create logging for this
+                # split into two lines where this function is called if mval is
+                # unchanged
+                self.mval = highest_2nd_derivative(self.gimg)
+                
+            colors = gold.convert(mode="RGBA").split()
+            colors[0].paste(gold.point(
+                lambda p: (255*(p>self.mval)*(p<self.uval))))
+            colors[1].paste(gold.point(lambda p: 0))
+            colors[2].paste(gold.point(lambda p: 0))
             
-            self.bin = PIL.Image.merge("RGBA", colors) #maybe change to something more reasonable
-            self.bin.putalpha(old.point(lambda p: (255*(p>self.mval)*(p<self.uval))))
-            self.gimg = PIL.Image.blend(self.bin, old.convert(mode="RGBA"), 0.5)
-            himg = visual_histogram(old, self.mval, self.uval)
+            self.bin = PIL.Image.merge("RGBA", colors) #change name? bin is bad
+            self.bin.putalpha(gold.point(
+                lambda p: (255*(p>self.mval)*(p<self.uval))))
+            self.gimg = PIL.Image.blend(self.bin, gold.convert(mode="RGBA"), 0.5)
+            himg = visual_histogram(gold, self.mval, self.uval)
             image1 = PIL.ImageTk.PhotoImage(himg)
             label_image.configure(image = image1)
             label_image.image = image1
-            self.show_binary = True # This is preferred
+            # People generally want the hidden binary to show when they use a
+            # feature that operates on the binary image, even if it were hidden
+            # before, so self.show_binary is set to True on all calls to such a
+            # function
+            self.show_binary = True 
             self.update(False)
 
         def rightclick(event):
@@ -321,7 +360,7 @@ class Imagewindow:
         def apply(event=None):
             #applies changes and saves the binary image in the primary buffer
             self.bimg = self.bin.convert(mode='L').point(lambda p: 255*(p>0)).convert(mode='1')
-            self.gimg = old
+            self.gimg = gold
             if logger:
                 print "bimg = gimg.point(lambda p: 255*(p>" + str(self.mval) + ")).convert(mode='1')"
             histogram_window.destroy()
@@ -468,7 +507,7 @@ class Imagewindow:
                 if self.fn=="log":
                     print "gimg = gimg.point(lambda x: np.log(x)*46)"
                 if self.fn=="square":
-                    print "gimg = gimg.point(lambda x: x**2/255"
+                    print "gimg = gimg.point(lambda x: x**2/255)"
             top.destroy()
             self.update()
             
@@ -476,9 +515,12 @@ class Imagewindow:
         #menubar.add_command(label="apply", command=apply)
         #menubar.add_command(label="cancel", command=cancel)
         #top.config(menu=menubar)
-        sqrtbtn = Tkinter.Button(top, text="sqrt", width=10, command=lambda : transform("sqrt"))
-        logbtn = Tkinter.Button(top, text="log", width=10, command=lambda : transform("log"))
-        squarebtn = Tkinter.Button(top, text="square", width=10, command=lambda : transform("square"))
+        sqrtbtn = Tkinter.Button(top, text="sqrt", width=10, 
+                command=lambda : transform("sqrt"))
+        logbtn = Tkinter.Button(top, text="log", width=10, 
+                command=lambda : transform("log"))
+        squarebtn = Tkinter.Button(top, text="square", width=10, 
+                command=lambda : transform("square"))
         #sqrtbtn.pack()
         #logbtn.pack()
         #squarebtn.pack()
@@ -497,6 +539,70 @@ class Imagewindow:
             self.update()
         else:
             print "Not a binary image"
+
+    def picker(self, action):
+        gold = self.gimg.copy()
+        bold = self.bimg.copy()
+        mao, n = scipy.ndimage.measurements.label(np.array(
+            self.bimg.convert("L")))
+
+        if action=="keep":
+            self.picked = PIL.Image.new(mode="1", size=self.img.size)
+        elif action=="reject":
+            self.picked = self.bimg.copy()
+            self.bimg = self.bimg.point(lambda x: 0)
+
+        self.pick = PIL.Image.new(mode="1", size=self.img.size)
+        self.gimg = self.gimg.convert("RGBA")
+        def pick(event=None):
+            ma = np.ndarray.copy(mao)
+            tmp = self.bimg.copy()
+            if event!=None:
+                x = event.x
+                y = event.y
+                if ma[y,x]!=0:
+                    ma[ma!=ma[y,x]] = 0
+                    ma[ma==ma[y,x]] = 1
+                else:
+                    return
+            else:
+                ma[ma!=-1] = 0
+            self.pick.putdata(ma.flatten())
+            self.picked = PIL.ImageChops.logical_xor(self.picked, self.pick)
+            #self.picked.convert("L").point(lambda x: 255*x).show()
+            self.bimg = PIL.ImageChops.logical_xor(self.bimg, self.pick)
+
+            colors = PIL.Image.new(mode="RGBA", size=self.gimg.size).split()
+            colors[1].paste(self.picked.convert("L").point(
+                lambda x: 255*x))
+            binmask = PIL.Image.merge("RGBA", colors)
+            binmask.putalpha(colors[1])
+            #binmask.show() 
+            #self.picked.convert("L").point(lambda x: 255*x).show()
+            self.gimg.paste(binmask, (0,0), self.picked)
+            self.update(False)
+
+
+        def apply(event=None):
+            self.bimg = self.picked
+            self.master.unbind("<ButtonPress-1>")
+            self.gimg = gold
+            top.destroy()
+            self.update()
+        
+        def cancel(event=None):
+            self.bimg = bold #These names are confusing
+            self.master.unbind("<ButtonPress-1>")
+            self.gimg = gold
+            top.destroy()
+            self.update()
+
+        self.master.bind("<ButtonPress-1>", pick)
+        top = dialog_window()
+        top.setcancel(cancel)
+        top.setapply(apply)
+        pick()
+        
 
     def logical_operators(self):
         # Performs the chosen binary operation on the selected binary 
@@ -517,11 +623,14 @@ class Imagewindow:
             n,m = (int(e1.get()),int(e2.get()))
             if self.bin_buffers[n]!=None and self.bin_buffers[m]!=None:
                 if op=="and":
-                    self.bimg = PIL.ImageChops.logical_and(self.bin_buffers[n], self.bin_buffers[m])
+                    self.bimg = PIL.ImageChops.logical_and(self.bin_buffers[n], 
+                            self.bin_buffers[m])
                 elif op=="or":
-                    self.bimg = PIL.ImageChops.logical_or(self.bin_buffers[n], self.bin_buffers[m])
+                    self.bimg = PIL.ImageChops.logical_or(self.bin_buffers[n], 
+                            self.bin_buffers[m])
                 elif op=="xor":
-                    self.bimg = PIL.ImageChops.logical_xor(self.bin_buffers[n], self.bin_buffers[m])
+                    self.bimg = PIL.ImageChops.logical_xor(self.bin_buffers[n], 
+                            self.bin_buffers[m])
                 if logger:
                     print ("bimg = PIL.ImageChops.logical_" + op + "(binimg" +
                             str(n) + ", binimg" + str(m) + ")")
@@ -533,9 +642,12 @@ class Imagewindow:
                 print "# binary buffer " + str(m) + " is empty"
                 
 
-        l_and= Tkinter.Button(top, text="AND", width=10, command=lambda : logic("and"))
-        l_or = Tkinter.Button(top, text="OR", width=10, command=lambda : logic("or"))
-        l_xor = Tkinter.Button(top, text="XOR", width=10, command=lambda : logic("xor"))
+        l_and= Tkinter.Button(top, text="AND", width=10, 
+                command=lambda : logic("and"))
+        l_or = Tkinter.Button(top, text="OR", width=10, 
+                command=lambda : logic("or"))
+        l_xor = Tkinter.Button(top, text="XOR", width=10, 
+                command=lambda : logic("xor"))
         #l_and.pack()
         #l_or.pack()
         #l_xor.pack()
@@ -605,7 +717,8 @@ class Imagewindow:
         # Should there be a log?
         count, bins = linbin(self.bimg)
         plt.bar(range(len(bins)), count, width=1)
-        plt.xticks([z for z in range(0,len(bins))],["<"+str(int(b)) for b in bins])
+        plt.xticks([z for z in range(0,len(bins))],
+                ["<"+str(int(b)) for b in bins])
         plt.ylabel("Count")
         plt.xlabel("Size")
         plt.show()
@@ -615,7 +728,8 @@ class Imagewindow:
         # Should there be a log?
         count, bins = logbin(self.bimg)
         plt.bar(range(len(bins)), count, width=1)
-        plt.xticks([z for z in range(0,len(bins))],["<"+str(int(b)) for b in bins])
+        plt.xticks([z for z in range(0,len(bins))],
+                ["<"+str(int(b)) for b in bins])
         plt.ylabel("Count")
         plt.xlabel("Size")
         plt.show()
