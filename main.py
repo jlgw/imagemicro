@@ -18,9 +18,7 @@ from tools import visual_histogram, unit_disk, watershed_pts, grid, \
         PIL_filters, filter, shade_by_size, linbin, logbin, \
         highest_2nd_derivative
 
-#img is the primary display buffer
 #should also split up into multiple files and separate UI from methods
-
 
 logger=True
 
@@ -60,6 +58,7 @@ class Imagewindow:
         loadmenu = Tkinter.Menu(menubar, tearoff=0)
         loadmenu.add_command(label="Original greyscale", 
                 command=self.load_original)
+
         for i in range(self.gs_buffer_count):
             savemenu.add_command(label="Greyscale Slot" + str(i), 
                     command=lambda i=i: self.save_gs_buffer(i))
