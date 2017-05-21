@@ -22,9 +22,24 @@ def visual_histogram(img, lowval=None, highval=None):
     draw = PIL.ImageDraw.Draw(histimg)
     for i in range(256):
         draw.line((i,100) + (i,100-normheight[i]), 
-                fill=(255,255*(i>lowval)*(i<highval)*(highval>lowval),255*(i>lowval)*(i<highval)))
+                fill=(255,255*(i>lowval)*(i<highval)*(highval>lowval),
+                    255*(i>lowval)*(i<highval)))
     del draw
     return histimg
+
+def highest_2nd_derivative(img):
+    # Input: List of length 256
+    # Output: Point of maximum second derivative
+    deg = 4
+    def const(n):
+        return n*(n-1)
+    hist = img.histogram()
+    p = np.polyfit(range(256), hist, deg)
+    #pl = [12*p[0]*i**2 + 6*p[1]*i for i in range(256)]
+    pl = [sum([const(n)*p[deg-n]*i**(n-2) for n in range(3, deg+1)]) 
+            for i in range(256)]
+    return pl.index(max(pl))
+
 
 def unit_disk(n):
     #Make this faster later if necessary, probably good enough for now

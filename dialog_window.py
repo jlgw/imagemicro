@@ -7,8 +7,10 @@ class dialog_window(Tkinter.Toplevel):
         self.bind("<Escape>", self.cancel)
         self.protocol("WM_DELETE_WINDOW", self.cancel) #close by x button does the same as cancel
         self.wm_title("")
-        self.applybtn = Tkinter.Button(self, text="apply", width=10, command=self.apply)
-        self.cancelbtn = Tkinter.Button(self, text="cancel", width=10, command=self.cancel)
+        self.applybtn = Tkinter.Button(self, text="apply", width=10, 
+                command=self.apply)
+        self.cancelbtn = Tkinter.Button(self, text="cancel", width=10, 
+                command=self.cancel)
         self.sep = Tkinter.Frame(self, height=5, bg="grey")
         
         self.applybtn.grid(row=0, column=0, sticky=Tkinter.W)
@@ -24,8 +26,10 @@ class dialog_window(Tkinter.Toplevel):
     #may need to be changed for more complex stuff
     def setcancel(self, fn):
         self.cancel= lambda x=None: fn()
+        # Maybe these duplicate calls can be replaced by a second call to
+        # __init__?
         self.bind("<Escape>", self.cancel)
-        self.protocol("WM_DELETE_WINDOW", self.cancel) #close by x button does the same as cancel
+        self.protocol("WM_DELETE_WINDOW", self.cancel)
         self.cancelbtn.configure(command=self.cancel)
 
     def setapply(self, fn):
