@@ -7,3 +7,14 @@ Todo: Clean up the code, separate UI from function further. Features that would 
 
 
 Please note that this is a work in progress and primarily created as a learning exercise.
+
+## Usage
+The easiest way to use the program is through virtualenv. Make sure you have python (2.7) and virtualenv installed. Clone the repository and, in the repository folder, run the following commands.
+
+```bash
+virtualenv env
+source ./env/bin/activate
+pip2 install -r requirements.txt
+```
+
+Now, run `python2 main.py` to start the program.
