@@ -14,7 +14,7 @@ def visual_histogram(img, lowval=None, highval=None):
         highval=255
     hist = img.histogram()
     if len(hist)!=256:
-        print "Convert to greyscale first"
+        print "#Non-greyscale image in display buffer, is histogram window already open?"
         return
     maxval = max(hist)
     normheight = [int(100*i/maxval) for i in hist]

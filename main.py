@@ -269,17 +269,17 @@ class Imagewindow:
                 fn(point_list)
 
         cancel = lambda event=None: done(event, cancel=True)
-        root.bind("<ButtonPress-1>", click)
-        root.bind("<ButtonPress-3>", done)
+        self.master.bind("<ButtonPress-1>", click)
+        self.master.bind("<ButtonPress-3>", done)
 
-        select_window = dialog_window()
+        select_window = dialog_window(self.master)
         select_window.setapply(done)
         select_window.setcancel(cancel)
         undobtn = Tkinter.Button(select_window, text="Undo", width=10, 
                 command=undo_pt)
         undobtn.grid(row=2, column=0)
 
-        #hmenubar = Tkinter.Menu(root)
+        #hmenubar = Tkinter.Menu(self.master)
 
         #hmenubar.add_command(label="done", command=done)
         #hmenubar.add_command(label="undo", command=undo_pt)
@@ -365,7 +365,7 @@ class Imagewindow:
             histogram_window.destroy()
             self.update()
 
-        histogram_window = dialog_window()
+        histogram_window = dialog_window(self.master)
         histogram_window.wm_title("Threshold")
         histogram_window.bind("<ButtonPress-1>", click)
         histogram_window.bind("<ButtonPress-3>", rightclick)
@@ -378,7 +378,7 @@ class Imagewindow:
         label_image = Tkinter.Label(histogram_window, image=tkpi)
         label_image.place(x=0,y=30,width=hist_img.size[0],height=hist_img.size[1])
         
-        #hmenubar = Tkinter.Menu(root)
+        #hmenubar = Tkinter.Menu(self.master)
 
         #optionframe= Tkinter.Frame(histogram_window)
         #optionframe.pack(side=Tkinter.BOTTOM)
@@ -459,7 +459,7 @@ class Imagewindow:
 
     def run_grid(self, fn):
         # runs the function with n by n grid, n supplied by user
-        top = dialog_window()
+        top = dialog_window(self.master)
         e = Tkinter.Entry(top)
         e.insert(Tkinter.END, "5")
         e.grid(row=2, column=0)
@@ -480,7 +480,7 @@ class Imagewindow:
         self.update()
 
     def lut(self):
-        top = dialog_window()
+        top = dialog_window(self.master)
         old = self.gimg.copy()
         self.fn=None
         def transform(method):
@@ -597,7 +597,7 @@ class Imagewindow:
             self.update()
 
         self.master.bind("<ButtonPress-1>", pick)
-        top = dialog_window()
+        top = dialog_window(self.master)
         top.setcancel(cancel)
         top.setapply(apply)
         pick()
@@ -607,7 +607,7 @@ class Imagewindow:
         # Performs the chosen binary operation on the selected binary 
         # buffers (def 1 and 2) and places the result in primary buffer (bimg)
         self.show_binary=1 
-        top = dialog_window()
+        top = dialog_window(self.master)
         e1 = Tkinter.Entry(top)
         e1.insert(Tkinter.END, "0")
         #e1.pack()
@@ -688,7 +688,7 @@ class Imagewindow:
         self.update()
 
     def morph_options(self, morph_type):
-        top = dialog_window()
+        top = dialog_window(self.master)
         e = Tkinter.Entry(top)
         e.insert(Tkinter.END, "2")
         #e.pack()
@@ -701,7 +701,7 @@ class Imagewindow:
 
     def fill_option(self):
         #maybe add options later though not strictly necessary
-        top = dialog_window()
+        top = dialog_window(self.master)
         self.morph(0,top,"fill_holes")
 
     def shade(self):

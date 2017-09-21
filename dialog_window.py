@@ -1,8 +1,9 @@
 import Tkinter
 
 class dialog_window(Tkinter.Toplevel):
-    def __init__(self):
-        Tkinter.Toplevel.__init__(self)
+    def __init__(self, topwindow=None):
+        Tkinter.Toplevel.__init__(self,topwindow)
+        self.wm_transient(topwindow) #Keep dialog buttons on top
         self.bind("<Return>", self.apply)
         self.bind("<Escape>", self.cancel)
         self.protocol("WM_DELETE_WINDOW", self.cancel) #close by x button does the same as cancel
