@@ -22,8 +22,8 @@ def visual_histogram(img, lowval=None, highval=None):
     draw = PIL.ImageDraw.Draw(histimg)
     for i in range(256):
         draw.line((i,100) + (i,100-normheight[i]), 
-                fill=(255,255*(i>lowval)*(i<highval)*(highval>lowval),
-                    255*(i>lowval)*(i<highval)))
+                fill=(255,255*(1-(i>lowval)*(i<highval)*(highval>lowval)),
+                    255*(1-(i>lowval)*(i<highval))))
     del draw
     return histimg
 

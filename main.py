@@ -42,6 +42,8 @@ class Imagewindow:
         self.max_undos = 8
         self.undolist  = []
 
+        self.conversion_ratio = 0
+
         menubar = Tkinter.Menu(master)
 
         filemenu = Tkinter.Menu(menubar, tearoff=0)
@@ -101,8 +103,7 @@ class Imagewindow:
         menubar.add_cascade(label="GS Operations", menu=gsops)
 
         binops = Tkinter.Menu(menubar, tearoff=0)
-        binops.add_command(label="Logical operations", 
-                command = self.logical_operators)
+        binops.add_command(label="Logical operations", command = self.logical_operators)
         binops.add_command(label="Invert", 
                 command = self.invert_bin)
         pickmenu = Tkinter.Menu(binops, tearoff=0)
@@ -130,6 +131,8 @@ class Imagewindow:
                 command = lambda : self.log_divide_bins())
         anmenu.add_command(label="Lin bins", 
                 command = lambda : self.lin_divide_bins())
+        anmenu.add_command(label="Set conversion ratio", 
+                command = lambda : self.set_conversion_ratio())
         menubar.add_cascade(label="Analysis", menu=anmenu)
 
         master.config(menu=menubar)
@@ -176,8 +179,12 @@ class Imagewindow:
         image1 = PIL.ImageTk.PhotoImage(self.img)
         self.label_image.configure(image = image1)
         self.label_image.image = image1
+        if(self.conversion_ratio!=0):
+            cr = " ("+str(self.conversion_ratio) + " um per pixel)"
+        else:
+            cr = ""
         self.master.wm_title(self.filename + " (" + 
-                str(self.resize_ratio*100) + "%)")
+                str(self.resize_ratio*100) + "%)" + cr)
     
     def zoom_in(self, event=None):
         self.resize_ratio += 0.1
@@ -716,22 +723,48 @@ class Imagewindow:
         # Should there be a log?
         count, bins = linbin(self.bimg)
         plt.bar(range(len(bins)), count, width=1)
-        plt.xticks([z for z in range(0,len(bins))],
-                ["<"+str(int(b)) for b in bins])
         plt.ylabel("Count")
-        plt.xlabel("Size")
+        if(self.conversion_ratio):
+            plt.xlabel("Size (microns^2)")
+            plt.xticks([z for z in range(0,len(bins))],
+                    ["<"+'%s' % float('%.2g' % (b*self.conversion_ratio**2))
+                        for b in bins])
+        else:
+            plt.xlabel("Size (pixels)")
+            plt.xticks([z for z in range(0,len(bins))],
+                ["<"+str(int(b)) for b in bins])
         plt.show()
 
     def log_divide_bins(self):
         # Plot or output? Maybe both? Decide later
         # Should there be a log?
-        count, bins = logbin(self.bimg)
+        count, bins = linbin(self.bimg)
         plt.bar(range(len(bins)), count, width=1)
-        plt.xticks([z for z in range(0,len(bins))],
-                ["<"+str(int(b)) for b in bins])
+
         plt.ylabel("Count")
-        plt.xlabel("Size")
+        if(self.conversion_ratio):
+            plt.xlabel("Size (microns^2)")
+            plt.xticks([z for z in range(0,len(bins))],
+                    ["<"+'%s' % float('%.2g' % (b*self.conversion_ratio**2)) 
+                        for b in bins])
+        else:
+            plt.xlabel("Size (pixels)")
+            plt.xticks([z for z in range(0,len(bins))],
+                ["<"+str(int(b)) for b in bins])
         plt.show()
+
+    def set_conversion_ratio(self):
+        def apply(event=None):
+            self.conversion_ratio = float(e.get())
+            self.update()
+            conv_window.destroy()
+        conv_window = dialog_window()
+        l = Tkinter.Label(conv_window, text="Microns per pixel: ")
+        e = Tkinter.Entry(conv_window)
+        e.insert(Tkinter.END, str(self.conversion_ratio))
+        l.grid(row=2, column=0)
+        e.grid(row=2, column=1)
+        conv_window.setapply(apply)
         
 root = Tkinter.Tk()
 root.geometry('+%d+%d' % (100,100))
