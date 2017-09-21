@@ -257,7 +257,8 @@ class Imagewindow:
             del draw
 
         def click(event):
-            point_list.append((event.x, event.y))
+            point_list.append((int(event.x/self.resize_ratio), 
+                int(event.y/self.resize_ratio)))
             point_self()
 
         def undo_pt(event=None):
@@ -285,12 +286,6 @@ class Imagewindow:
         undobtn = Tkinter.Button(select_window, text="Undo", width=10, 
                 command=undo_pt)
         undobtn.grid(row=2, column=0)
-
-        #hmenubar = Tkinter.Menu(self.master)
-
-        #hmenubar.add_command(label="done", command=done)
-        #hmenubar.add_command(label="undo", command=undo_pt)
-        #select_window.config(menu=hmenubar)
             
     def threshold(self):
         # Opens a visual histogram
@@ -558,14 +553,14 @@ class Imagewindow:
             self.picked = self.bimg.copy()
             self.bimg = self.bimg.point(lambda x: 0)
 
-        self.pick = PIL.Image.new(mode="1", size=self.img.size)
+        self.pick = PIL.Image.new(mode="1", size=self.gimg.size)
         self.gimg = self.gimg.convert("RGBA")
         def pick(event=None):
             ma = np.ndarray.copy(mao)
             tmp = self.bimg.copy()
             if event!=None:
-                x = event.x
-                y = event.y
+                x = int(event.x/self.resize_ratio)
+                y = int(event.y/self.resize_ratio)
                 if ma[y,x]!=0:
                     ma[ma!=ma[y,x]] = 0
                     ma[ma==ma[y,x]] = 1
