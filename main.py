@@ -913,7 +913,7 @@ class Imagewindow:
             self.update()
             circ_dialog.destroy()
             if logger:
-                logging("draw.ellipse(["+str(self.bimg.size[0]/2-r)+", "+ str(self.bimg.size[1]/2-r)+", "+
+                self.logging("draw.ellipse(["+str(self.bimg.size[0]/2-r)+", "+ str(self.bimg.size[1]/2-r)+", "+
                     str(self.bimg.size[0]/2+r)+", "+str(self.bimg.size[1]/2+r)+"], fill=255)")
         def cancel(event=None):
             self.bimg = orig
