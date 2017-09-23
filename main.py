@@ -2,6 +2,7 @@ import os.path
 import sys
 import PIL
 import PIL.Image
+import PIL.ImageMath
 import PIL.ImageTk
 import PIL.ImageDraw
 import PIL.ImageChops
@@ -9,8 +10,10 @@ import PIL.ImageFilter
 import Tkinter
 import tkFileDialog
 import scipy
+import scipy.fftpack
 import scipy.ndimage
 import numpy as np
+import inspect
 import matplotlib.pyplot as plt
 
 from dialog_window import dialog_window
@@ -82,6 +85,10 @@ class Imagewindow:
                 command=self.toggle_binary)
 
         gsops = Tkinter.Menu(menubar, tearoff=0)
+        gsops.add_command(label="Apply binary mask",
+                command=self.apply_binary_mask)
+        gsops.add_command(label="Arithmetic",
+                command=self.greyscale_arithmetic)
         gsops.add_command(label="FIND_EDGES", 
                 command=self.edgedetect_find_edges)
         gsops.add_command(label="Sobel",
@@ -100,6 +107,10 @@ class Imagewindow:
                 command=lambda : self.run_grid(self.watershed))
         gsops.add_cascade(label="Watershed", menu=wshedmenu)
         gsops.add_command(label="LUT Transform", command=self.lut)
+        fftmenu = Tkinter.Menu(gsops, tearoff=0)
+        fftmenu.add_command(label="Transform", command=self.fft)
+        fftmenu.add_command(label="Inverse transform", command=self.ifft)
+        gsops.add_cascade(label="FFT", menu=fftmenu)
         menubar.add_cascade(label="GS Operations", menu=gsops)
 
         binops = Tkinter.Menu(menubar, tearoff=0)
@@ -112,18 +123,23 @@ class Imagewindow:
         pickmenu.add_command(label="Keep",
                 command = lambda : self.picker("keep"))
         binops.add_cascade(label="Pick elements", menu=pickmenu)
-        binops.add_command(label="Erosion", 
+        morphmenu = Tkinter.Menu(binops, tearoff=0)
+        morphmenu.add_command(label="Erosion", 
                 command = lambda : self.morph_options("erosion"))
-        binops.add_command(label="Dilation", 
+        morphmenu.add_command(label="Dilation", 
                 command = lambda : self.morph_options("dilation"))
-        binops.add_command(label="Opening", 
+        morphmenu.add_command(label="Opening", 
                 command = lambda : self.morph_options("opening"))
-        binops.add_command(label="Closing", 
+        morphmenu.add_command(label="Closing", 
                 command = lambda : self.morph_options("closing"))
-        binops.add_command(label="Fill holes", 
+        morphmenu.add_command(label="Fill holes", 
                 command = self.fill_option)
+        binops.add_cascade(label = "Morphology", menu=morphmenu)
         binops.add_command(label="Largest brightest", 
                 command = self.shade)
+        drawmenu = Tkinter.Menu(binops, tearoff=0)
+        drawmenu.add_command(label="Draw center circle", command=self.draw_center_circle)
+        binops.add_cascade(label = "Draw", menu=drawmenu)
         menubar.add_cascade(label="Bin Operations", menu=binops)
 
         anmenu = Tkinter.Menu(menubar, tearoff=0)
@@ -147,7 +163,7 @@ class Imagewindow:
         self.label_image.pack(side = "bottom", fill = "both", expand = "yes")
         
         if logger:
-            print "from tools import *"
+            print("from tools import *")
         if filename!=None:
             self.openfile(filename)
         master.mainloop()
@@ -199,9 +215,11 @@ class Imagewindow:
             self.undolist.pop()
             self.gimg, self.bimg = self.undolist[-1]
             self.update(False)
-            print "# Undo"
+            if logger:
+                self.logging("# Undo")
         else:
-            print "# Max undos reached"
+            if logger:
+                self.logging("# Max undos reached")
 
     def toggle_binary(self):
         if self.show_binary==1:
@@ -213,6 +231,8 @@ class Imagewindow:
     def openfile(self, filename=None):
         if filename==None:
             filename = tkFileDialog.askopenfilename()
+        if type(filename)==tuple or filename=="":
+            return
         self.gimg = PIL.Image.open(filename).convert("L")
         self.bimg = PIL.Image.new(mode="1", size=self.gimg.size)
         self.orig = self.gimg.copy()
@@ -220,20 +240,22 @@ class Imagewindow:
         self.filename = ftail
         self.update()
         if logger:
-            print 'gimg = PIL.Image.open("' + filename + '").convert("L")'
-            print 'bimg = PIL.Image.new(mode="1", size=gimg.size)'
-            print 'orig = gimg.copy()'
+            self.logging('gimg = PIL.Image.open("' + filename + '").convert("L")')
+            self.logging('bimg = PIL.Image.new(mode="1", size=gimg.size)')
+            self.logging('orig = gimg.copy()')
 
     def load_original(self):
         self.gimg = self.orig.copy()
         if logger:
-            print "gimg = orig.copy()"
+            self.logging("gimg = orig.copy()")
         self.update()
 
     def savefile(self):
         filename = tkFileDialog.asksaveasfilename()
+        if type(filename)==tuple or filename=="":
+            return
         self.gimg.save(filename)
-        print 'gimg.save("' + filename + '")'
+        self.logging('gimg.save("' + filename + '")')
 
     def select_points(self,fn):
         #Permits the user to interactively select points
@@ -324,7 +346,7 @@ class Imagewindow:
                 # this isn't ideal but it's better than no default value at all
                 #self.mval = self.gimg.histogram().index(max(self.gimg.histogram()))
                 # alternate solution: highest 2nd derivative
-                # if it works create logging for this
+                # if it works create self.logging for this
                 # split into two lines where this function is called if mval is
                 # unchanged
                 self.mval = highest_2nd_derivative(self.gimg)
@@ -363,7 +385,7 @@ class Imagewindow:
             self.bimg = self.bin.convert(mode='L').point(lambda p: 255*(p>0)).convert(mode='1')
             self.gimg = gold
             if logger:
-                print "bimg = gimg.point(lambda p: 255*(p>" + str(self.mval) + ")).convert(mode='1')"
+                self.logging("bimg = gimg.point(lambda p: 255*(p>" + str(self.mval) + ")).convert(mode='1')")
             histogram_window.destroy()
             self.update()
 
@@ -416,7 +438,7 @@ class Imagewindow:
             self.gimg = self.greyscale_buffers[slot]
             print "# Loaded greyscale slot " + str(slot)
             if logger:
-                print "gimg = gimg" + str(slot)
+                self.logging("gimg = gimg" + str(slot))
             self.update()
         else:
             print "# greyscale buffer " + str(slot) + " is empty"
@@ -427,7 +449,7 @@ class Imagewindow:
             self.bin_buffers[slot] = self.bimg.copy()
             print "# Saved in greyscale slot " + str(slot)
             if logger:
-                print "binimg" + str(slot)  + " = bimg.copy()"
+                self.logging("binimg" + str(slot)  + " = bimg.copy()")
         else:
             print "# Not a binary image"
 
@@ -437,7 +459,7 @@ class Imagewindow:
             self.bimg = self.bin_buffers[slot]
             print "# Loaded binary slot " + str(slot)
             if logger:
-                print "bimg = binimg" + str(slot)
+                self.logging("bimg = binimg" + str(slot))
             self.update()
         else:
             print "# binary buffer " + str(slot) + " is empty"
@@ -446,7 +468,7 @@ class Imagewindow:
         self.filter_function("FIND_EDGES")
 
     def sobel(self):
-        tmpdata = scipy.ndimage.sobel(self.gimg)
+        tmpdata = scipy.ndimage.sobel(self.gimg, 0)
         tmpimg = PIL.Image.new(mode="L", size=self.gimg.size)
         tmpimg.putdata(tmpdata.flatten())
         self.gimg = tmpimg
@@ -455,7 +477,7 @@ class Imagewindow:
     def filter_function(self, filtername):
         self.gimg = self.gimg.filter(filter(filtername))
         if logger:
-            print "gimg = self.gimg.filter(PIL.Filters." + filtername + ")"
+            self.logging("gimg = self.gimg.filter(PIL.Filters." + filtername + ")")
 
         self.update()
 
@@ -476,8 +498,8 @@ class Imagewindow:
         
     def watershed(self, point_list):
         if logger:
-            print "points = " + str(point_list)
-            print "data = watershed_pts(points)"
+            self.logging("points = " + str(point_list))
+            self.logging("data = watershed_pts(points)")
         self.gimg = watershed_pts(self.gimg, point_list)
         self.update()
 
@@ -504,11 +526,11 @@ class Imagewindow:
         def apply(event=None):
             if self.fn!=None:
                 if self.fn=="sqrt":
-                    print "gimg = gimg.point(lambda x: np.sqrt(x)*16)"
+                    self.logging("gimg = gimg.point(lambda x: np.sqrt(x)*16)")
                 if self.fn=="log":
-                    print "gimg = gimg.point(lambda x: np.log(x)*46)"
+                    self.logging("gimg = gimg.point(lambda x: np.log(x)*46)")
                 if self.fn=="square":
-                    print "gimg = gimg.point(lambda x: x**2/255)"
+                    self.logging("gimg = gimg.point(lambda x: x**2/255)")
             top.destroy()
             self.update()
             
@@ -539,7 +561,7 @@ class Imagewindow:
             self.bimg = PIL.ImageChops.invert(self.bimg)
             self.update()
         else:
-            print "Not a binary image"
+            print "#Not a binary image"
 
     def picker(self, action):
         gold = self.gimg.copy()
@@ -633,8 +655,8 @@ class Imagewindow:
                     self.bimg = PIL.ImageChops.logical_xor(self.bin_buffers[n], 
                             self.bin_buffers[m])
                 if logger:
-                    print ("bimg = PIL.ImageChops.logical_" + op + "(binimg" +
-                            str(n) + ", binimg" + str(m) + ")")
+                    self.logging(("bimg = PIL.ImageChops.logical_" + op + "(binimg" +
+                            str(n) + ", binimg" + str(m) + ")"))
                 top.destroy()
                 self.update()
             elif self.bin_buffers[n]==None:
@@ -677,12 +699,12 @@ class Imagewindow:
             tmp = scipy.ndimage.binary_fill_holes(self.bimg.convert("L"))
 
         if logger:
-            print 'tmp = PIL.Image.new(mode="1", size = img.size)'
-            print ('tmp = scipy.ndimage.binary_' +
+            self.logging('tmp = PIL.Image.new(mode="1", size = img.size)')
+            self.logging(('tmp = scipy.ndimage.binary_' +
             morph_type + '(img.convert("L"), structure=unit_disk(' +
-                    str(count) + "))")
-            print "tmp.putdata(255*tmp.flatten())"
-            print 'bimg = tmp.convert("1")'
+                    str(count) + "))"))
+            self.logging("tmp.putdata(255*tmp.flatten())")
+            self.logging('bimg = tmp.convert("1")')
 
         img2.putdata(255*tmp.flatten())
         top.destroy()
@@ -711,7 +733,7 @@ class Imagewindow:
         self.toggle_binary()
         self.update()
         if logger:
-            print "gimg = shade_by_size(bimg)"
+            self.logging("gimg = shade_by_size(bimg)")
 
     def lin_divide_bins(self):
         # Plot or output? Maybe both? Decide later
@@ -760,6 +782,150 @@ class Imagewindow:
         l.grid(row=2, column=0)
         e.grid(row=2, column=1)
         conv_window.setapply(apply)
+
+    def greyscale_arithmetic(self):
+        # TODO: Add exception for missing gimg
+        #       Add logger
+        #       
+        g_window = dialog_window()
+        fn_string = Tkinter.StringVar()
+        fn_string.set("a")
+        abuff_label = Tkinter.Label(g_window, text="input a (gimg)")
+        abuff_entry= Tkinter.Entry(g_window)
+        abuff_entry.insert(0, "0")
+        bbuff_label = Tkinter.Label(g_window, text="input b (gimg)")
+        bbuff_entry= Tkinter.Entry(g_window)
+        bbuff_entry.insert(0, "1")
+        fn_entry = Tkinter.Entry(g_window, textvariable=fn_string)
+        old = self.gimg.copy()
+
+        def apply(event=None):
+            self.gimg = (PIL.ImageMath.eval("convert(" + fn_entry.get() + ",'L')", 
+                    a=self.greyscale_buffers[int(abuff_entry.get())], 
+                    b=self.greyscale_buffers[int(bbuff_entry.get())]))
+            if logger:
+                self.logging("gimg = PIL.ImageMath.eval('convert("+fn_entry.get()+',"L"'+")',"+ 
+                        "a=gimg" + abuff_entry.get()+", b=gimg" + bbuff_entry.get() + ")")
+            self.update()
+            g_window.destroy()
+
+        def cancel(event=None):
+            self.gimg = old
+            g_window.destroy()
+            self.update(False)
+
+        def update(event=None):
+            self.gimg = (PIL.ImageMath.eval("convert(" + fn_entry.get() + ",'L')", 
+                    a=self.greyscale_buffers[int(abuff_entry.get())], 
+                    b=self.greyscale_buffers[int(bbuff_entry.get())]))
+            self.update(False)
+        def minval(event=None):
+            fn_string.set("min(a,b)")
+            update()
+
+        def maxval(event=None):
+            fn_string.set("max(a,b)")
+            update()
+
+        def add(event=None):
+            fn_string.set("a+b")
+            update()
+
+        def subtract(event=None):
+            fn_string.set("a-b")
+            update()
+
+        updatebutton    = Tkinter.Button(g_window, text = "Update", width = 10,
+                command = update)
+        minbutton       = Tkinter.Button(g_window, text = "Min", width = 10,
+                command = minval)
+        maxbutton       = Tkinter.Button(g_window, text = "Max", width = 10,
+                command = maxval)
+        addbutton       = Tkinter.Button(g_window, text = "Add", width = 10,
+                command = add)
+        subtractbutton  = Tkinter.Button(g_window, text = "Subtract", width = 10,
+                command = subtract)
+        fn_entry.grid(row=2, column=0)
+        updatebutton.grid(row=2, column=1)
+        minbutton.grid(row=3, column=0)
+        maxbutton.grid(row=4, column=0)
+        addbutton.grid(row=5, column=0)
+        subtractbutton.grid(row=6, column=0)
+        abuff_label.grid(row=3, column=1)
+        abuff_entry.grid(row=4, column=1)
+        bbuff_label.grid(row=5, column=1)
+        bbuff_entry.grid(row=6, column=1)
+        g_window.setapply(apply)
+        g_window.setcancel(cancel)
+
+    def apply_binary_mask(self):
+        self.gimg = PIL.ImageMath.eval("convert(min(a,b),'L')", 
+                a=self.gimg, b=self.bimg.convert('L'))
+        if logger:
+            self.logging('PIL.ImageMath.eval("convert(min(a,b),'+"'L')"+'"'+", a=self.gimg, b=self.bimg.convert('L'))")
+        self.update()
+
+    def fft(self):
+        #Add logging
+        #if self.phase!=None:
+        #print "# Phase data being overwritten"
+        tmpimg = PIL.Image.new(mode="L", size=self.gimg.size)
+        fftvals = np.fft.fftshift(np.fft.fft2(self.gimg))
+        freq = np.abs(fftvals)
+        self.phase = np.angle(fftvals)
+        freq = np.log(freq+np.e)
+        self.fftmax = np.max(freq)
+        freq = freq*255./self.fftmax
+        tmpimg.putdata(freq.flatten())
+        self.gimg = tmpimg
+        self.update()
+        #self.logging("fft = np.fft.fftshift(np.fft.fft2(gimg))")
+        #self.logging("freq = np.abs(fftvals)")
+        #self.logging("phase = np.angle(fftvals)")
+
+
+    def ifft(self):
+        #Add logging
+        if self.phase==None:
+            print "# No phase data available"
+            return
+        tmpimg = PIL.Image.new(mode="L", size=self.gimg.size)
+        fftvals = np.array(self.gimg.getdata()).reshape((self.gimg.size[1],self.gimg.size[0]))
+
+        #fftvals = (1-2*(fftvals>=128))*(np.exp((np.abs((1-2*(fftvals>=128))*fftvals+256*(fftvals>=128)))*self.fftmax/126.)-np.e)
+        fftvals = ((np.exp(fftvals*self.fftmax/255))-np.e)
+        ifftvals = np.fft.ifft2(np.fft.ifftshift(fftvals*np.exp(1j*self.phase)))
+        tmpimg.putdata(ifftvals.flatten())
+        self.gimg = tmpimg
+        self.phase = None
+        self.update()
+    
+    def draw_center_circle(self):
+        circ_dialog = dialog_window()
+        orig = self.bimg.copy()
+        size_entry = Tkinter.Entry(circ_dialog)
+        size_entry.insert(Tkinter.END, "1")
+        def apply(event=None):
+            draw = PIL.ImageDraw.Draw(self.bimg)
+            r = int(size_entry.get())
+            draw.ellipse([self.bimg.size[0]/2-r, self.bimg.size[1]/2-r, 
+                self.bimg.size[0]/2+r, self.bimg.size[1]/2+r], fill=255)
+            self.update()
+            circ_dialog.destroy()
+            if logger:
+                logging("draw.ellipse(["str(self.bimg.size[0]/2-r)+", "+ str(self.bimg.size[1]/2-r)+", "
+                    str(self.bimg.size[0]/2+r)+", "+str(self.bimg.size[1]/2+r)+"], fill=255)")
+        def cancel(event=None):
+            self.bimg = orig
+            circ_dialog.destroy()
+            self.update()
+        size_entry.grid(row=2,column=0)
+        circ_dialog.setapply(apply)
+        circ_dialog.setcancel(cancel)
+            
+    def logging(self, logstr, func=None):
+        print logstr
+
         
 root = Tkinter.Tk()
 root.geometry('+%d+%d' % (100,100))
