@@ -21,8 +21,6 @@ from tools import visual_histogram, unit_disk, watershed_pts, grid, \
         PIL_filters, filter, shade_by_size, linbin, logbin, \
         highest_2nd_derivative
 
-#should also split up into multiple files and separate UI from methods
-
 logger=True
 
 class Imagewindow:
@@ -138,7 +136,9 @@ class Imagewindow:
         binops.add_command(label="Largest brightest", 
                 command = self.shade)
         drawmenu = Tkinter.Menu(binops, tearoff=0)
+        drawmenu.add_command(label="Clear", command=self.draw_clear)
         drawmenu.add_command(label="Draw center circle", command=self.draw_center_circle)
+        drawmenu.add_command(label="Draw object", command=self.draw_object)
         binops.add_cascade(label = "Draw", menu=drawmenu)
         menubar.add_cascade(label="Bin Operations", menu=binops)
 
@@ -164,6 +164,7 @@ class Imagewindow:
         
         if logger:
             print("from tools import *")
+        self.filename=""
         if filename!=None:
             self.openfile(filename)
         master.mainloop()
@@ -263,8 +264,6 @@ class Imagewindow:
         #right-click - done
         img_copy = self.gimg.copy()
         self.gimg = self.gimg.convert(mode="RGB")
-        #print id(img_copy)
-        #print id(self.gimg)
         point_list = []
         def point_self(all=None):
             r = 2
@@ -395,35 +394,17 @@ class Imagewindow:
         histogram_window.bind("<ButtonPress-3>", rightclick)
         histogram_window.setapply(apply)
         histogram_window.setcancel(cancel)
-        #histogram_window.geometry('%dx%d' % (hist_img.size[0],hist_img.size[1]))
         histogram_window.geometry('%dx%d' % (hist_img.size[0],hist_img.size[1]+30))
 
         tkpi = PIL.ImageTk.PhotoImage(hist_img)
         label_image = Tkinter.Label(histogram_window, image=tkpi)
         label_image.place(x=0,y=30,width=hist_img.size[0],height=hist_img.size[1])
         
-        #hmenubar = Tkinter.Menu(self.master)
-
-        #optionframe= Tkinter.Frame(histogram_window)
-        #optionframe.pack(side=Tkinter.BOTTOM)
-        #apply = Tkinter.Button(optionframe, text="apply", width=10, command=apply)
-        #cancel = Tkinter.Button(optionframe, text="cancel", width=10, command=cancel)
-        #apply.pack(in_ = optionframe, side=Tkinter.LEFT)
-        #cancel.pack(in_ = optionframe, side=Tkinter.LEFT)
-        #apply = Tkinter.Button(histogram_window, text="apply", width=10, command=apply)
-        #cancel = Tkinter.Button(histogram_window, text="cancel", width=10, command=cancel)
-        #apply.grid(row=0, column=0, sticky=Tkinter.W)
-        #cancel.grid(row=0, column=1, sticky=Tkinter.W)
-
-        #hmenubar.add_command(label="apply", command=apply)
-        #hmenubar.add_command(label="cancel", command=cancel)
-        #histogram_window.config(menu=hmenubar)
         click(mv=1)
         histogram_window.mainloop()
 
     def save_gs_buffer(self, slot):
         #save primary greyscale buffer (gimg) in greyscale buffer number (slot - int)
-        #print slot
         if self.gimg.mode=="L":
             self.greyscale_buffers[slot] = self.gimg.copy()
             print "# Saved in greyscale slot " + str(slot)
@@ -469,9 +450,7 @@ class Imagewindow:
 
     def sobel(self):
         tmpdata = scipy.ndimage.sobel(self.gimg, 0)
-        tmpimg = PIL.Image.new(mode="L", size=self.gimg.size)
-        tmpimg.putdata(tmpdata.flatten())
-        self.gimg = tmpimg
+        self.gimg.putdata(tmpdata.flatten())
         self.update()
     
     def filter_function(self, filtername):
@@ -592,7 +571,6 @@ class Imagewindow:
                 ma[ma!=-1] = 0
             self.pick.putdata(ma.flatten())
             self.picked = PIL.ImageChops.logical_xor(self.picked, self.pick)
-            #self.picked.convert("L").point(lambda x: 255*x).show()
             self.bimg = PIL.ImageChops.logical_xor(self.bimg, self.pick)
 
             colors = PIL.Image.new(mode="RGBA", size=self.gimg.size).split()
@@ -600,8 +578,6 @@ class Imagewindow:
                 lambda x: 255*x))
             binmask = PIL.Image.merge("RGBA", colors)
             binmask.putalpha(colors[1])
-            #binmask.show() 
-            #self.picked.convert("L").point(lambda x: 255*x).show()
             self.gimg.paste(binmask, (0,0), self.picked)
             self.update(False)
 
@@ -634,12 +610,10 @@ class Imagewindow:
         top = dialog_window(self.master)
         e1 = Tkinter.Entry(top)
         e1.insert(Tkinter.END, "0")
-        #e1.pack()
         e1.grid(row=2, column=0)
         e1.focus_set()
         e2 = Tkinter.Entry(top)
         e2.insert(Tkinter.END, "1")
-        #e2.pack()
         e2.grid(row=2, column=1)
 
         def logic(op):
@@ -671,9 +645,6 @@ class Imagewindow:
                 command=lambda : logic("or"))
         l_xor = Tkinter.Button(top, text="XOR", width=10, 
                 command=lambda : logic("xor"))
-        #l_and.pack()
-        #l_or.pack()
-        #l_xor.pack()
         l_and.grid(row=3, column=0)
         l_or.grid(row=4, column=0)
         l_xor.grid(row=5, column=0)
@@ -715,13 +686,10 @@ class Imagewindow:
         top = dialog_window(self.master)
         e = Tkinter.Entry(top)
         e.insert(Tkinter.END, "2")
-        #e.pack()
         e.grid(row=2, column=0)
         e.focus_set()
         applyfn = lambda : self.morph(int(e.get()), top, morph_type)
         top.setapply(applyfn)
-        #apply = Tkinter.Button(top, text="apply", width=10, command= applyfn)
-        #apply.pack()
 
     def fill_option(self):
         #maybe add options later though not strictly necessary
@@ -775,7 +743,7 @@ class Imagewindow:
             self.conversion_ratio = float(e.get())
             self.update()
             conv_window.destroy()
-        conv_window = dialog_window()
+        conv_window = dialog_window(self.master)
         l = Tkinter.Label(conv_window, text="Microns per pixel: ")
         e = Tkinter.Entry(conv_window)
         e.insert(Tkinter.END, str(self.conversion_ratio))
@@ -787,7 +755,7 @@ class Imagewindow:
         # TODO: Add exception for missing gimg
         #       Add logger
         #       
-        g_window = dialog_window()
+        g_window = dialog_window(self.master)
         fn_string = Tkinter.StringVar()
         fn_string.set("a")
         abuff_label = Tkinter.Label(g_window, text="input a (gimg)")
@@ -867,41 +835,43 @@ class Imagewindow:
 
     def fft(self):
         #Add logging
-        #if self.phase!=None:
-        #print "# Phase data being overwritten"
-        tmpimg = PIL.Image.new(mode="L", size=self.gimg.size)
         fftvals = np.fft.fftshift(np.fft.fft2(self.gimg))
         freq = np.abs(fftvals)
         self.phase = np.angle(fftvals)
         freq = np.log(freq+np.e)
         self.fftmax = np.max(freq)
         freq = freq*255./self.fftmax
-        tmpimg.putdata(freq.flatten())
-        self.gimg = tmpimg
+        self.gimg.putdata(freq.flatten())
         self.update()
-        #self.logging("fft = np.fft.fftshift(np.fft.fft2(gimg))")
-        #self.logging("freq = np.abs(fftvals)")
-        #self.logging("phase = np.angle(fftvals)")
-
+        if logger:
+            self.logging("fftvals = np.fft.fftshift(np.fft.fft2(gimg))")
+            self.logging("freq = np.log(np.abs(fftvals+np.e))")
+            self.logging("fftmax = np.max(freq)")
+            self.logging("phase = np.angle(fftvals)")
+            self.logging("gimg.putdata((freq*255/fftmax).flatten())")
+            self.logging("# Warning, phase space cannot be modified")
 
     def ifft(self):
-        #Add logging
-        if self.phase==None:
+        try:
+            self.phase
+        except AttributeError:
             print "# No phase data available"
             return
-        tmpimg = PIL.Image.new(mode="L", size=self.gimg.size)
-        fftvals = np.array(self.gimg.getdata()).reshape((self.gimg.size[1],self.gimg.size[0]))
-
-        #fftvals = (1-2*(fftvals>=128))*(np.exp((np.abs((1-2*(fftvals>=128))*fftvals+256*(fftvals>=128)))*self.fftmax/126.)-np.e)
+        fftvals = np.array(self.gimg)
         fftvals = ((np.exp(fftvals*self.fftmax/255))-np.e)
         ifftvals = np.fft.ifft2(np.fft.ifftshift(fftvals*np.exp(1j*self.phase)))
-        tmpimg.putdata(ifftvals.flatten())
-        self.gimg = tmpimg
+        self.gimg.putdata(ifftvals.flatten())
         self.phase = None
         self.update()
+        if logger:
+            self.logging("fftvals = ((np.exp(fftmax/255))-np.e)")
+            self.logging("ifftvals = np.fft.ifft2(np.fft.ifftshift(fftvals*np.exp(1j*phase)))")
+            self.logging("gimg.putdata(ifftvals.flatten())")
     
     def draw_center_circle(self):
-        circ_dialog = dialog_window()
+        self.show_binary = 1
+        self.update(False)
+        circ_dialog = dialog_window(self.master)
         orig = self.bimg.copy()
         size_entry = Tkinter.Entry(circ_dialog)
         size_entry.insert(Tkinter.END, "1")
@@ -913,6 +883,7 @@ class Imagewindow:
             self.update()
             circ_dialog.destroy()
             if logger:
+                self.logging("draw = PIL.ImageDraw.Draw(bimg)")
                 self.logging("draw.ellipse(["+str(self.bimg.size[0]/2-r)+", "+ str(self.bimg.size[1]/2-r)+", "+
                     str(self.bimg.size[0]/2+r)+", "+str(self.bimg.size[1]/2+r)+"], fill=255)")
         def cancel(event=None):
@@ -922,8 +893,59 @@ class Imagewindow:
         size_entry.grid(row=2,column=0)
         circ_dialog.setapply(apply)
         circ_dialog.setcancel(cancel)
+    
+    def draw_object(self, type=None):
+        self.show_binary = 1
+        self.update(False)
+        objects = ["line", "ellipse", "rectangle"]
+        line_dialog = dialog_window(self.master)
+        orig = self.bimg.copy()
+        add = Tkinter.IntVar()
+        add_button = Tkinter.Checkbutton(line_dialog, text="Add/remove", variable=add)
+        add_button.select()
+        add_button.grid(row=2, column=0)
+        listbox = Tkinter.Listbox(line_dialog)
+        [listbox.insert(Tkinter.END, i) for i in objects]
+        listbox.select_set(0)
+        listbox.grid(row=2, column=1)
+        draw = PIL.ImageDraw.Draw(self.bimg)
+        pts = [0,0]
+        def apply(event=None):
+            self.update()
+            self.master.unbind("<ButtonPress-1>")
+            line_dialog.destroy()
+        
+        def cancel(event=None):
+            self.bimg = orig
+            self.master.unbind("<ButtonPress-1>")
+            self.update(False)
+            line_dialog.destroy()
+
+        def pick(event=None, point_num=[0]):
+            pts[point_num[0]] = [int(event.x/self.resize_ratio),int(event.y/self.resize_ratio)]
+            point_num[0] += 1
+            if point_num[0]==2:
+                if objects[listbox.curselection()[0]]=="line":
+                    draw.line(pts[0]+pts[1], fill=255*add.get())
+                elif objects[listbox.curselection()[0]]=="ellipse":
+                    draw.ellipse(pts[0]+pts[1], fill=255*add.get())
+                elif objects[listbox.curselection()[0]]=="rectangle":
+                    draw.rectangle(pts[0]+pts[1], fill=255*add.get())
+                #Add logging here, maybe a buffer?
+                point_num[0] = 0
+                self.update(False)
+            
+        self.master.bind("<ButtonPress-1>", pick)
+        line_dialog.setcancel(cancel)
+        line_dialog.setapply(apply)
+
+    def draw_clear(self):
+         #There may be a better way of doing this, give it thought later
+         self.bimg = self.bimg.convert(mode='L').point(lambda p: 0).convert(mode='1')
+         self.update()
             
     def logging(self, logstr, func=None):
+        #We may want to use some other type of logging in the future
         print logstr
 
         
