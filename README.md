@@ -13,7 +13,7 @@ Implemented tools:
 - FFT/IFFT
 - Binary arithmetic (boolean operations)
 - Binary feature selection/rejection
-- Morphology operation
+- Binary morphology operations
 - Feature size sort to greyscale algorithm
 - Elementary binary drawing operations
 - Elementary binary feature analysis with pyplot
