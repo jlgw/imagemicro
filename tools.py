@@ -27,18 +27,31 @@ def visual_histogram(img, lowval=None, highval=None):
     del draw
     return histimg
 
+def aver(hist, length):
+    avg = len(hist)*[0]
+    avval = 0
+    for i in range(length, len(hist)):
+        avval += hist[i]-hist[i-length]
+        avg[i-length/2] = avval/length
+    return avg
+
 def highest_2nd_derivative(img):
     # Input: List of length 256
-    # Output: Point of maximum second derivative
+    # Output: Point of maximum approximated second derivative
     deg = 4
-    def const(n):
-        return n*(n-1)
+    d = 2
+    padlength = 20
     hist = img.histogram()
     p = np.polyfit(range(256), hist, deg)
-    #pl = [12*p[0]*i**2 + 6*p[1]*i for i in range(256)]
-    pl = [sum([const(n)*p[deg-n]*i**(n-2) for n in range(3, deg+1)]) 
-            for i in range(256)]
-    return pl.index(max(pl))
+    pd = [p[n]*reduce(lambda x,y: x*y, range(deg-n-d+1,deg-n+1)) for n in range(deg-d+1)]
+
+    leftpad = padlength*[0]
+    rightpad = padlength*[0]
+    pl = leftpad + [sum([pd[deg-d-n]*i**(n) for n in range(0, deg+1-d)]) 
+            for i in range(256)] + rightpad
+    pl = aver(pl,40)[padlength:256+padlength]
+    return pl.index(max(pl[padlength:255+padlength]))
+
 
 
 def unit_disk(n):
@@ -122,6 +135,21 @@ def shade_by_size(img):
     nimg = PIL.Image.new(mode="L", size=img.size)
     nimg.putdata(tot.flatten())
     return nimg
+
+def gs_fft(img):
+    fftvals = np.fft.fftshift(np.fft.fft2(img))
+    freq = np.abs(fftvals)
+    phase = np.angle(fftvals)
+    freq = np.log(freq+np.e)
+    fftmax = np.max(freq)
+    freq = freq*255./fftmax
+    return freq, phase, fftmax
+
+def gs_ifft(img, phase, fftmax):
+    fftvals = np.array(img)
+    fftvals = ((np.exp(fftvals*fftmax/255))-np.e)
+    ifftvals = np.real(np.fft.ifft2(np.fft.ifftshift(fftvals*np.exp(1j*phase))))
+    return ifftvals
 
 def linbin(img, bins = 12):
     ma, n = scipy.ndimage.measurements.label(np.array(img.convert("L")))

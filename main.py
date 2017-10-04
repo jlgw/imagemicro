@@ -19,7 +19,7 @@ import matplotlib.pyplot as plt
 from dialog_window import dialog_window
 from tools import visual_histogram, unit_disk, watershed_pts, grid, \
         PIL_filters, filter, shade_by_size, linbin, logbin, \
-        highest_2nd_derivative
+        highest_2nd_derivative, gs_fft, gs_ifft
 
 logger=True
 
@@ -169,6 +169,14 @@ class Imagewindow:
             self.openfile(filename)
         master.mainloop()
 
+    def clickpt(self, x, y):
+        # Takes event arguments, returns position on image
+        difx = (self.master.winfo_width()-self.resize_ratio*self.gimg.width)
+        dify = (self.master.winfo_height()-self.resize_ratio*self.gimg.height)
+        xout = int((x - (difx>0)*difx/2)/self.resize_ratio)
+        yout = int((y - (dify>0)*dify/2)/self.resize_ratio)
+        return xout, yout
+
     def update(self, saveundo=True):
 
         if saveundo:
@@ -278,8 +286,7 @@ class Imagewindow:
             del draw
 
         def click(event):
-            point_list.append((int(event.x/self.resize_ratio), 
-                int(event.y/self.resize_ratio)))
+            point_list.append(self.clickpt(event.x, event.y))
             point_self()
 
         def undo_pt(event=None):
@@ -341,14 +348,8 @@ class Imagewindow:
                 if self.mval > self.uval:
                     self.uval=self.mval
             elif mv==1:
-                # this gives the default self.mval (cut-off value) as the maximum value position in the histogram
-                # this isn't ideal but it's better than no default value at all
-                #self.mval = self.gimg.histogram().index(max(self.gimg.histogram()))
-                # alternate solution: highest 2nd derivative
-                # if it works create self.logging for this
-                # split into two lines where this function is called if mval is
-                # unchanged
                 self.mval = highest_2nd_derivative(self.gimg)
+            mv_label['text'] = "Low:  "+str(self.mval)
                 
             colors = gold.convert(mode="RGBA").split()
             colors[0].paste(gold.point(
@@ -377,6 +378,7 @@ class Imagewindow:
             self.uval = event.x
             if self.uval<self.mval:
                 self.uval=self.mval
+            uv_label['text'] = "High: "+str(self.uval)
             click(mv=2)
 
         def apply(event=None):
@@ -399,7 +401,11 @@ class Imagewindow:
         tkpi = PIL.ImageTk.PhotoImage(hist_img)
         label_image = Tkinter.Label(histogram_window, image=tkpi)
         label_image.place(x=0,y=30,width=hist_img.size[0],height=hist_img.size[1])
+        mv_label = Tkinter.Label(histogram_window, text = "Low:  "+str(self.mval))
+        uv_label = Tkinter.Label(histogram_window, text = "High: "+str(self.uval))
         
+        mv_label.grid(row=2, column=0)
+        uv_label.grid(row=2, column=1)
         click(mv=1)
         histogram_window.mainloop()
 
@@ -513,19 +519,12 @@ class Imagewindow:
             top.destroy()
             self.update()
             
-        #menubar = Tkinter.Menu(self.master)
-        #menubar.add_command(label="apply", command=apply)
-        #menubar.add_command(label="cancel", command=cancel)
-        #top.config(menu=menubar)
         sqrtbtn = Tkinter.Button(top, text="sqrt", width=10, 
                 command=lambda : transform("sqrt"))
         logbtn = Tkinter.Button(top, text="log", width=10, 
                 command=lambda : transform("log"))
         squarebtn = Tkinter.Button(top, text="square", width=10, 
                 command=lambda : transform("square"))
-        #sqrtbtn.pack()
-        #logbtn.pack()
-        #squarebtn.pack()
         sqrtbtn.grid(row=2, column=0)
         logbtn.grid(row=3, column=0)
         squarebtn.grid(row=4, column=0)
@@ -560,8 +559,7 @@ class Imagewindow:
             ma = np.ndarray.copy(mao)
             tmp = self.bimg.copy()
             if event!=None:
-                x = int(event.x/self.resize_ratio)
-                y = int(event.y/self.resize_ratio)
+                x,y = self.clickpt(event.x, event.y)
                 if ma[y,x]!=0:
                     ma[ma!=ma[y,x]] = 0
                     ma[ma==ma[y,x]] = 1
@@ -753,8 +751,6 @@ class Imagewindow:
 
     def greyscale_arithmetic(self):
         # TODO: Add exception for missing gimg
-        #       Add logger
-        #       
         g_window = dialog_window(self.master)
         fn_string = Tkinter.StringVar()
         fn_string.set("a")
@@ -834,22 +830,14 @@ class Imagewindow:
         self.update()
 
     def fft(self):
-        #Add logging
-        fftvals = np.fft.fftshift(np.fft.fft2(self.gimg))
-        freq = np.abs(fftvals)
-        self.phase = np.angle(fftvals)
-        freq = np.log(freq+np.e)
-        self.fftmax = np.max(freq)
-        freq = freq*255./self.fftmax
+        #Warning: Converting the fft into greyscale (0-255 integers) 
+        #destroys some information
+        freq, self.phase, self.fftmax = gs_fft(self.gimg)
         self.gimg.putdata(freq.flatten())
         self.update()
         if logger:
-            self.logging("fftvals = np.fft.fftshift(np.fft.fft2(gimg))")
-            self.logging("freq = np.log(np.abs(fftvals+np.e))")
-            self.logging("fftmax = np.max(freq)")
-            self.logging("phase = np.angle(fftvals)")
-            self.logging("gimg.putdata((freq*255/fftmax).flatten())")
-            self.logging("# Warning, phase space cannot be modified")
+            self.logging("freq, phase, fftmax = gs_fft(gimg)")
+            self.logging("gimg.putdata(freq)")
 
     def ifft(self):
         try:
@@ -857,16 +845,12 @@ class Imagewindow:
         except AttributeError:
             print "# No phase data available"
             return
-        fftvals = np.array(self.gimg)
-        fftvals = ((np.exp(fftvals*self.fftmax/255))-np.e)
-        ifftvals = np.fft.ifft2(np.fft.ifftshift(fftvals*np.exp(1j*self.phase)))
+        ifftvals = gs_ifft(self.gimg, self.phase, self.fftmax)
         self.gimg.putdata(ifftvals.flatten())
-        self.phase = None
         self.update()
         if logger:
-            self.logging("fftvals = ((np.exp(fftmax/255))-np.e)")
-            self.logging("ifftvals = np.fft.ifft2(np.fft.ifftshift(fftvals*np.exp(1j*phase)))")
-            self.logging("gimg.putdata(ifftvals.flatten())")
+            self.logging("ifftvals = gs_ifft(self.gimg, self.phase, self.fftmax)")
+            self.logging("gimg.putdata(ifftvals)")
     
     def draw_center_circle(self):
         self.show_binary = 1
@@ -908,7 +892,10 @@ class Imagewindow:
         [listbox.insert(Tkinter.END, i) for i in objects]
         listbox.select_set(0)
         listbox.grid(row=2, column=1)
-        draw = PIL.ImageDraw.Draw(self.bimg)
+
+        clear_button = Tkinter.Button(line_dialog, text="Clear",
+                command = lambda x=None: self.draw_clear())
+        clear_button.grid(row=3, column=0)
         pts = [0,0]
         def apply(event=None):
             self.update()
@@ -922,9 +909,11 @@ class Imagewindow:
             line_dialog.destroy()
 
         def pick(event=None, point_num=[0]):
-            pts[point_num[0]] = [int(event.x/self.resize_ratio),int(event.y/self.resize_ratio)]
+            #pts[point_num[0]] = [int(event.x/self.resize_ratio),int(event.y/self.resize_ratio)]
+            pts[point_num[0]] = self.clickpt(event.x,event.y)
             point_num[0] += 1
             if point_num[0]==2:
+                draw = PIL.ImageDraw.Draw(self.bimg)
                 if objects[listbox.curselection()[0]]=="line":
                     draw.line(pts[0]+pts[1], fill=255*add.get())
                 elif objects[listbox.curselection()[0]]=="ellipse":
@@ -933,21 +922,21 @@ class Imagewindow:
                     draw.rectangle(pts[0]+pts[1], fill=255*add.get())
                 #Add logging here, maybe a buffer?
                 point_num[0] = 0
-                self.update(False)
-            
+                self.update()
+
         self.master.bind("<ButtonPress-1>", pick)
         line_dialog.setcancel(cancel)
         line_dialog.setapply(apply)
 
-    def draw_clear(self):
+    def draw_clear(self, update=True):
          #There may be a better way of doing this, give it thought later
          self.bimg = self.bimg.convert(mode='L').point(lambda p: 0).convert(mode='1')
-         self.update()
+         self.update(True)
             
     def logging(self, logstr, func=None):
         #We may want to use some other type of logging in the future
         print logstr
-
+    
         
 root = Tkinter.Tk()
 root.geometry('+%d+%d' % (100,100))
